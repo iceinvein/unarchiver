@@ -1,0 +1,357 @@
+use crate::state::{AppState, JobHandle};
+use extractor::{ExtractOptions, ExtractStats, OverwriteMode};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, State};
+use uuid::Uuid;
+
+/// DTO for extraction options from frontend
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractOptionsDTO {
+    pub overwrite: String,
+    pub size_limit_bytes: Option<u64>,
+    pub strip_components: u32,
+    pub allow_symlinks: bool,
+    pub allow_hardlinks: bool,
+    pub password: Option<String>,
+}
+
+impl From<ExtractOptionsDTO> for ExtractOptions {
+    fn from(dto: ExtractOptionsDTO) -> Self {
+        let overwrite = match dto.overwrite.as_str() {
+            "replace" => OverwriteMode::Replace,
+            "skip" => OverwriteMode::Skip,
+            _ => OverwriteMode::Rename,
+        };
+
+        ExtractOptions {
+            overwrite,
+            size_limit_bytes: dto.size_limit_bytes,
+            strip_components: dto.strip_components,
+            allow_symlinks: dto.allow_symlinks,
+            allow_hardlinks: dto.allow_hardlinks,
+            password: dto.password,
+        }
+    }
+}
+
+/// Progress event payload
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgressEvent {
+    pub job_id: String,
+    pub archive_path: String,
+    pub current_file: String,
+    pub bytes_written: u64,
+    pub total_bytes: Option<u64>,
+}
+
+/// Completion event payload
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionEvent {
+    pub job_id: String,
+    pub archive_path: String,
+    pub status: JobStatus,
+    pub stats: Option<ExtractStats>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum JobStatus {
+    Success,
+    Failed,
+    Cancelled,
+}
+
+/// Password required event payload
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasswordRequiredEvent {
+    pub job_id: String,
+    pub archive_path: String,
+}
+
+/// Extract one or more archives
+#[tauri::command]
+pub async fn extract(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input_paths: Vec<String>,
+    out_dir: String,
+    options: ExtractOptionsDTO,
+) -> Result<String, String> {
+    // Generate unique job ID
+    let job_id = Uuid::new_v4().to_string();
+
+    // Convert options
+    let mut extract_options: ExtractOptions = options.into();
+    let output_dir = PathBuf::from(out_dir);
+
+    // Create cancel flag
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+    let cancel_flag_clone = cancel_flag.clone();
+
+    // Create password channel (using mpsc for potential multiple retries)
+    let (password_tx, mut password_rx) = tokio::sync::mpsc::channel::<String>(1);
+
+    // Clone for the task
+    let job_id_clone = job_id.clone();
+    let app_clone = app.clone();
+
+    // Spawn the extraction task
+    let task = tokio::spawn(async move {
+        let mut final_stats = None;
+
+        for input_path in input_paths {
+            let archive_path = PathBuf::from(&input_path);
+            let archive_path_str = input_path.clone();
+
+            // Try extraction with retry for password
+            let mut retry_count = 0;
+            let max_retries = 3;
+
+            loop {
+                // Clone for progress callback
+                let job_id_for_progress = job_id_clone.clone();
+                let app_for_progress = app_clone.clone();
+                let archive_for_progress = archive_path_str.clone();
+
+                // Create progress callback
+                let progress_callback =
+                    move |current_file: &str, bytes_written: u64, total_bytes: Option<u64>| {
+                        let event = ProgressEvent {
+                            job_id: job_id_for_progress.clone(),
+                            archive_path: archive_for_progress.clone(),
+                            current_file: current_file.to_string(),
+                            bytes_written,
+                            total_bytes,
+                        };
+
+                        let _ = app_for_progress.emit("extract_progress", event);
+                        true // Continue extraction
+                    };
+
+                // Run extraction in blocking context
+                let archive_path_for_blocking = archive_path.clone();
+                let output_dir_for_blocking = output_dir.clone();
+                let options_for_blocking = extract_options.clone();
+                let cancel_flag_for_blocking = cancel_flag_clone.clone();
+
+                let result = tokio::task::spawn_blocking(move || {
+                    extractor::extract(
+                        &archive_path_for_blocking,
+                        &output_dir_for_blocking,
+                        &options_for_blocking,
+                        &progress_callback,
+                        cancel_flag_for_blocking,
+                    )
+                })
+                .await;
+
+                match result {
+                    Ok(Ok(stats)) => {
+                        final_stats = Some(stats);
+
+                        // Emit completion event for this archive
+                        let completion = CompletionEvent {
+                            job_id: job_id_clone.clone(),
+                            archive_path: archive_path_str,
+                            status: JobStatus::Success,
+                            stats: final_stats.clone(),
+                            error: None,
+                        };
+                        let _ = app_clone.emit("extract_done", completion);
+                        break; // Success, move to next archive
+                    }
+                    Ok(Err(e)) => {
+                        // Check if password is required
+                        if matches!(
+                            e,
+                            extractor::ExtractError::PasswordRequired
+                                | extractor::ExtractError::InvalidPassword
+                        ) && retry_count < max_retries
+                        {
+                            retry_count += 1;
+
+                            // Emit password_required event
+                            let password_event = PasswordRequiredEvent {
+                                job_id: job_id_clone.clone(),
+                                archive_path: archive_path_str.clone(),
+                            };
+                            let _ = app_clone.emit("password_required", password_event);
+
+                            // Wait for password from frontend (with timeout)
+                            match tokio::time::timeout(
+                                tokio::time::Duration::from_secs(300), // 5 minute timeout
+                                password_rx.recv(),
+                            )
+                            .await
+                            {
+                                Ok(Some(password)) => {
+                                    // Update options with the provided password
+                                    extract_options.password = Some(password);
+                                    continue; // Retry extraction
+                                }
+                                Ok(None) | Err(_) => {
+                                    // Channel closed or timeout - treat as cancellation
+                                    let completion = CompletionEvent {
+                                        job_id: job_id_clone.clone(),
+                                        archive_path: archive_path_str.clone(),
+                                        status: JobStatus::Cancelled,
+                                        stats: None,
+                                        error: Some(
+                                            "Password prompt timed out or was cancelled"
+                                                .to_string(),
+                                        ),
+                                    };
+                                    let _ = app_clone.emit("extract_done", completion);
+                                    return Err(extractor::ExtractError::Cancelled);
+                                }
+                            }
+                        }
+
+                        let error_msg = e.to_string();
+
+                        let status = if matches!(e, extractor::ExtractError::Cancelled) {
+                            JobStatus::Cancelled
+                        } else {
+                            JobStatus::Failed
+                        };
+
+                        let completion = CompletionEvent {
+                            job_id: job_id_clone.clone(),
+                            archive_path: archive_path_str,
+                            status,
+                            stats: None,
+                            error: Some(error_msg),
+                        };
+                        let _ = app_clone.emit("extract_done", completion);
+
+                        // Stop processing remaining archives on error
+                        return Err(e);
+                    }
+                    Err(join_err) => {
+                        let err = extractor::ExtractError::Io(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Task join error: {}", join_err),
+                        ));
+                        let error_msg = err.to_string();
+
+                        let completion = CompletionEvent {
+                            job_id: job_id_clone.clone(),
+                            archive_path: archive_path_str,
+                            status: JobStatus::Failed,
+                            stats: None,
+                            error: Some(error_msg),
+                        };
+                        let _ = app_clone.emit("extract_done", completion);
+
+                        return Err(err);
+                    }
+                }
+            }
+        }
+
+        Ok(final_stats.unwrap_or_default())
+    });
+
+    // Store job handle
+    let job_handle = JobHandle {
+        cancel_flag,
+        task,
+        password_sender: Some(password_tx),
+    };
+
+    state.jobs.lock().insert(job_id.clone(), job_handle);
+
+    Ok(job_id)
+}
+
+/// Probe archive metadata without extracting
+#[tauri::command]
+pub async fn probe(path: String) -> Result<extractor::ArchiveInfo, String> {
+    let archive_path = PathBuf::from(path);
+
+    // Run probe in blocking context since it does I/O
+    tokio::task::spawn_blocking(move || {
+        extractor::probe(&archive_path)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| {
+        // Convert ExtractError to user-friendly message
+        match e {
+            extractor::ExtractError::NotFound(_) => {
+                "Archive file not found. Please check the file path.".to_string()
+            }
+            extractor::ExtractError::UnsupportedFormat(fmt) => {
+                format!("Unsupported archive format: {}. Supported formats include ZIP, TAR, 7Z, RAR, and ISO.", fmt)
+            }
+            extractor::ExtractError::Corrupted(msg) => {
+                format!("Archive appears to be corrupted: {}", msg)
+            }
+            extractor::ExtractError::Io(io_err) => {
+                format!("Failed to read archive: {}", io_err)
+            }
+            _ => e.to_string(),
+        }
+    })
+}
+
+/// Cancel a running extraction job
+#[tauri::command]
+pub async fn cancel_job(state: State<'_, AppState>, job_id: String) -> Result<(), String> {
+    // Look up and remove the job handle
+    let job_handle = {
+        let mut jobs = state.jobs.lock();
+        jobs.remove(&job_id)
+    }; // Lock is dropped here
+
+    if let Some(job_handle) = job_handle {
+        // Set the cancel flag to signal cancellation
+        job_handle
+            .cancel_flag
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+
+        // Wait for the task to complete (it should abort soon)
+        let _ = job_handle.task.await;
+
+        Ok(())
+    } else {
+        Err(format!("Job not found: {}", job_id))
+    }
+}
+
+/// Provide password for a password-protected archive
+#[tauri::command]
+pub async fn provide_password(
+    state: State<'_, AppState>,
+    job_id: String,
+    password: String,
+) -> Result<(), String> {
+    // Look up the job handle and clone the sender
+    let password_sender = {
+        let jobs = state.jobs.lock();
+        if let Some(job_handle) = jobs.get(&job_id) {
+            job_handle.password_sender.clone()
+        } else {
+            None
+        }
+    }; // Lock is dropped here
+
+    if let Some(sender) = password_sender {
+        // Send the password to the extraction task
+        sender
+            .send(password)
+            .await
+            .map_err(|_| "Failed to send password to extraction task".to_string())?;
+        Ok(())
+    } else {
+        Err(format!("Job not found: {}", job_id))
+    }
+}

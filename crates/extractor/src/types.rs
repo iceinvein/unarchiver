@@ -88,6 +88,17 @@ pub struct ExtractStats {
     pub cancelled: bool,
 }
 
+impl Default for ExtractStats {
+    fn default() -> Self {
+        Self {
+            files_extracted: 0,
+            bytes_written: 0,
+            duration: Duration::from_secs(0),
+            cancelled: false,
+        }
+    }
+}
+
 // Helper module for Duration serialization
 mod duration_serde {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};

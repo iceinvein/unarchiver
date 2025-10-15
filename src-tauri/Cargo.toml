@@ -19,12 +19,18 @@ tauri-build = { version = "2", features = [] }
 # Tauri
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
 
 # Workspace dependencies
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+
+# Additional dependencies
+uuid = { version = "1", features = ["v4", "serde"] }
+parking_lot = "0.12"
 
 # Local dependencies
 extractor = { path = "../crates/extractor" }
