@@ -1,0 +1,26 @@
+[package]
+name = "unarchive-cli"
+version = "0.1.0"
+edition = "2021"
+authors = ["you"]
+description = "Command-line interface for archive extraction"
+license = "MIT"
+
+[[bin]]
+name = "unarchive"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace dependencies
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Local dependencies
+extractor = { path = "../extractor" }
+
+# CLI-specific dependencies
+clap = { version = "4", features = ["derive"] }
+indicatif = "0.17"

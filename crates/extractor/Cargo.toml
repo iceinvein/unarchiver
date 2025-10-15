@@ -1,0 +1,25 @@
+[package]
+name = "extractor"
+version = "0.1.0"
+edition = "2021"
+authors = ["you"]
+description = "Core archive extraction library with security features"
+license = "MIT"
+
+[lib]
+name = "extractor"
+path = "src/lib.rs"
+
+[dependencies]
+# Workspace dependencies
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+# Archive handling
+compress-tools = "0.15"
+
+[dev-dependencies]
+tempfile = "3"
