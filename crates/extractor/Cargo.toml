@@ -20,6 +20,10 @@ tracing = { workspace = true }
 
 # Archive handling
 compress-tools = "0.15"
+tempfile = "3"
 
 [dev-dependencies]
 tempfile = "3"
+zip = "2"
+tar = "0.4"
+flate2 = "1"

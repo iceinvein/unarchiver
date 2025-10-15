@@ -49,10 +49,14 @@
 //! ```
 
 pub mod error;
+pub mod extract;
+pub mod probe;
+pub mod safety;
 pub mod types;
 
 // Re-export main types
 pub use error::{ExtractError, SecurityError};
+pub use safety::EntryType;
 pub use types::{ArchiveInfo, ExtractOptions, ExtractStats, OverwriteMode};
 
 use std::path::Path;
@@ -86,8 +90,7 @@ pub type ProgressCallback = dyn Fn(&str, u64, Option<u64>) -> bool + Send + Sync
 /// - The format is unsupported or corrupted
 /// - The archive cannot be read
 pub fn probe(path: &Path) -> Result<ArchiveInfo, ExtractError> {
-    // TODO: Implement in task 3.1
-    Err(ExtractError::NotFound(path.to_path_buf()))
+    probe::probe_archive(path)
 }
 
 /// Extract an archive to the specified output directory.
@@ -114,13 +117,12 @@ pub fn probe(path: &Path) -> Result<ArchiveInfo, ExtractError> {
 /// - I/O errors occur
 pub fn extract(
     archive_path: &Path,
-    _output_dir: &Path,
-    _options: &ExtractOptions,
-    _progress_cb: &ProgressCallback,
-    _cancel_flag: Arc<AtomicBool>,
+    output_dir: &Path,
+    options: &ExtractOptions,
+    progress_cb: &ProgressCallback,
+    cancel_flag: Arc<AtomicBool>,
 ) -> Result<ExtractStats, ExtractError> {
-    // TODO: Implement in task 4.2
-    Err(ExtractError::NotFound(archive_path.to_path_buf()))
+    extract::extract_archive(archive_path, output_dir, options, progress_cb, cancel_flag)
 }
 
 #[cfg(test)]
