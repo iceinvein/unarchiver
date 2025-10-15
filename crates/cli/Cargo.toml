@@ -24,3 +24,4 @@ extractor = { path = "../extractor" }
 # CLI-specific dependencies
 clap = { version = "4", features = ["derive"] }
 indicatif = "0.17"
+ctrlc = "3.4"
