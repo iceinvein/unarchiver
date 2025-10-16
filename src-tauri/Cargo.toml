@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "A secure archive extraction application for macOS"
 authors = ["you"]
 edition = "2021"
+default-run = "unarchiver"
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
@@ -11,6 +12,14 @@ edition = "2021"
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "unarchiver_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "unarchiver"
+path = "src/main.rs"
+
+[[bin]]
+name = "export_types"
+path = "src/bin/export_types.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -31,6 +40,7 @@ tracing = { workspace = true }
 # Additional dependencies
 uuid = { version = "1", features = ["v4", "serde"] }
 parking_lot = "0.12"
+ts-rs = "9.0"
 
 # Local dependencies
 extractor = { path = "../crates/extractor" }

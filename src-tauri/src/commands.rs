@@ -5,17 +5,22 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
+use ts_rs::TS;
 use uuid::Uuid;
 
 /// DTO for extraction options from frontend
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct ExtractOptionsDTO {
     pub overwrite: String,
+    #[ts(optional, type = "number")]
     pub size_limit_bytes: Option<u64>,
+    #[ts(type = "number")]
     pub strip_components: u32,
     pub allow_symlinks: bool,
     pub allow_hardlinks: bool,
+    #[ts(optional)]
     pub password: Option<String>,
 }
 
@@ -39,28 +44,35 @@ impl From<ExtractOptionsDTO> for ExtractOptions {
 }
 
 /// Progress event payload
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct ProgressEvent {
     pub job_id: String,
     pub archive_path: String,
     pub current_file: String,
+    #[ts(type = "number")]
     pub bytes_written: u64,
+    #[ts(optional, type = "number")]
     pub total_bytes: Option<u64>,
 }
 
 /// Completion event payload
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionEvent {
     pub job_id: String,
     pub archive_path: String,
     pub status: JobStatus,
+    #[ts(optional)]
     pub stats: Option<ExtractStats>,
+    #[ts(optional)]
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 #[serde(rename_all = "lowercase")]
 pub enum JobStatus {
     Success,
@@ -69,7 +81,8 @@ pub enum JobStatus {
 }
 
 /// Password required event payload
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct PasswordRequiredEvent {
     pub job_id: String,
@@ -132,7 +145,7 @@ pub async fn extract(
                             total_bytes,
                         };
 
-                        let _ = app_for_progress.emit("extract_progress", event);
+                        let _ = app_for_progress.emit_to("main", "extract_progress", event);
                         true // Continue extraction
                     };
 
@@ -165,7 +178,7 @@ pub async fn extract(
                             stats: final_stats.clone(),
                             error: None,
                         };
-                        let _ = app_clone.emit("extract_done", completion);
+                        let _ = app_clone.emit_to("main", "extract_done", completion);
                         break; // Success, move to next archive
                     }
                     Ok(Err(e)) => {
@@ -183,7 +196,7 @@ pub async fn extract(
                                 job_id: job_id_clone.clone(),
                                 archive_path: archive_path_str.clone(),
                             };
-                            let _ = app_clone.emit("password_required", password_event);
+                            let _ = app_clone.emit_to("main", "password_required", password_event);
 
                             // Wait for password from frontend (with timeout)
                             match tokio::time::timeout(
@@ -209,7 +222,7 @@ pub async fn extract(
                                                 .to_string(),
                                         ),
                                     };
-                                    let _ = app_clone.emit("extract_done", completion);
+                                    let _ = app_clone.emit_to("main", "extract_done", completion);
                                     return Err(extractor::ExtractError::Cancelled);
                                 }
                             }
@@ -230,7 +243,7 @@ pub async fn extract(
                             stats: None,
                             error: Some(error_msg),
                         };
-                        let _ = app_clone.emit("extract_done", completion);
+                        let _ = app_clone.emit_to("main", "extract_done", completion);
 
                         // Stop processing remaining archives on error
                         return Err(e);
@@ -249,7 +262,7 @@ pub async fn extract(
                             stats: None,
                             error: Some(error_msg),
                         };
-                        let _ = app_clone.emit("extract_done", completion);
+                        let _ = app_clone.emit_to("main", "extract_done", completion);
 
                         return Err(err);
                     }

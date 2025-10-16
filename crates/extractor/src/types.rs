@@ -2,20 +2,25 @@
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use ts_rs::TS;
 
 /// Metadata information about an archive.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src-tauri/../src/lib/bindings/")]
 pub struct ArchiveInfo {
     /// Archive format (e.g., "ZIP", "TAR", "7Z")
     pub format: String,
 
     /// Number of entries in the archive
+    #[ts(type = "number")]
     pub entries: u64,
 
     /// Compressed size in bytes (if available)
+    #[ts(optional, type = "number")]
     pub compressed_bytes: Option<u64>,
 
     /// Estimated uncompressed size in bytes (if available)
+    #[ts(optional, type = "number")]
     pub uncompressed_estimate: Option<u64>,
 
     /// Whether the archive is password-protected
@@ -72,16 +77,20 @@ pub enum OverwriteMode {
 }
 
 /// Statistics about a completed extraction operation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src-tauri/../src/lib/bindings/")]
 pub struct ExtractStats {
     /// Number of files successfully extracted
+    #[ts(type = "number")]
     pub files_extracted: u64,
 
     /// Total bytes written to disk
+    #[ts(type = "number")]
     pub bytes_written: u64,
 
-    /// Duration of the extraction operation
+    /// Duration of the extraction operation (in seconds)
     #[serde(with = "duration_serde")]
+    #[ts(type = "number")]
     pub duration: Duration,
 
     /// Whether the extraction was cancelled

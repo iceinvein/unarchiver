@@ -30,6 +30,18 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "iOS": {},
+    "macOS": {
+      "minimumSystemVersion": "10.13"
+    },
+    "fileAssociations": [
+      {
+        "ext": ["zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz2", "txz", "iso"],
+        "name": "Archive",
+        "role": "Viewer",
+        "mimeType": "application/zip"
+      }
     ]
   }
 }

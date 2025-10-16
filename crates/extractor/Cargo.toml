@@ -21,6 +21,7 @@ tracing = { workspace = true }
 # Archive handling
 compress-tools = "0.15"
 tempfile = "3"
+ts-rs = "9.0"
 
 [dev-dependencies]
 tempfile = "3"
