@@ -98,7 +98,7 @@ fn create_tar_xz_archive(archive_path: &PathBuf, files: &[(&str, &[u8])]) -> std
 
 /// Helper function to create a 7z archive
 fn create_7z_archive(archive_path: &PathBuf, files: &[(&str, &[u8])]) -> std::io::Result<()> {
-    use sevenz_rust::SevenZWriter;
+    use sevenz_rust2::SevenZWriter;
     
     let file = File::create(archive_path)?;
     let mut sz = SevenZWriter::new(file)
@@ -106,7 +106,7 @@ fn create_7z_archive(archive_path: &PathBuf, files: &[(&str, &[u8])]) -> std::io
     
     for (name, content) in files {
         sz.push_archive_entry(
-            sevenz_rust::SevenZArchiveEntry::from_path(
+            sevenz_rust2::SevenZArchiveEntry::from_path(
                 std::path::Path::new(name),
                 name.to_string(),
             ),

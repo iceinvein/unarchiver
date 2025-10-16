@@ -179,7 +179,7 @@ fn list_tar_entries(
 fn list_7z_entries(
     path: &Path,
 ) -> std::result::Result<(Vec<ArchiveEntry>, bool), Box<dyn std::error::Error>> {
-    use sevenz_rust::{Password, SevenZReader};
+    use sevenz_rust2::{Password, SevenZReader};
 
     let file = File::open(path)?;
     let file_len = file.metadata()?.len();
