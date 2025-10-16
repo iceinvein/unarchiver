@@ -5,7 +5,13 @@ A modern, safe, and efficient archive extraction application for macOS built wit
 ## Features
 
 - **Multiple Format Support**: Extract ZIP, 7Z, RAR, TAR, GZ, BZ2, XZ, ISO, and more
-- **Drag & Drop**: Simply drag archives into the app window
+- **Multi-Part Archive Support**: Full support for RAR multi-part archives (.part1.rar, .r00, etc.)
+- **Modern File Explorer**: Browse and preview archives before extraction
+- **Flexible Extraction Options**:
+  - Extract to default location (same directory as archive)
+  - Extract to custom folder via dropdown or context menu
+  - Automatic conflict resolution with rename/skip/replace modes
+- **Archive Preview**: View archive contents, file structure, and metadata before extracting
 - **Queue Management**: Process multiple archives with real-time progress tracking
 - **Password Support**: Handle password-protected archives with secure prompts
 - **macOS Integration**: 
@@ -13,6 +19,7 @@ A modern, safe, and efficient archive extraction application for macOS built wit
   - Finder Quick Action for "Extract Here" functionality
 - **Safety First**: Built-in protection against zip-slip and path traversal attacks
 - **Customizable Settings**: Control overwrite behavior, size limits, and extraction options
+- **Modern UI**: Clean, responsive interface with light/dark/system theme support
 
 ## Installation
 
@@ -95,29 +102,65 @@ The CLI tool is bundled with the application:
 - `--size-limit <BYTES>`: Maximum extraction size in bytes
 - `--json`: Output probe results as JSON
 
+## User Interface
+
+### File Explorer
+- Browse your file system to find archives
+- Navigate using breadcrumb navigation or up/back buttons
+- Archives are highlighted with special icons
+- Right-click context menu for quick actions
+
+### Archive Preview
+- View archive contents in a tree structure
+- See file/folder counts and total size
+- Expand/collapse folders to explore structure
+- Identify password-protected archives before extraction
+- Quick metadata display (format, file count, size)
+
+### Extraction Options
+- **Quick Extract**: Click the main "Extract" button to extract to default location
+- **Custom Location**: Use the dropdown arrow to choose a specific output folder
+- **Context Menu**: Right-click any archive for extraction options
+- **Keyboard Shortcut**: Cmd+E (Mac) / Ctrl+E (Windows) to extract selected archive
+
+### Queue Management
+- View all active and completed extractions
+- Real-time progress tracking with file names and bytes written
+- Cancel ongoing extractions
+- Review extraction statistics (files extracted, duration, etc.)
+
 ## Settings
 
 Configure extraction behavior in the Settings panel:
 
 - **Overwrite Mode**: Choose how to handle existing files (replace, skip, or rename)
+  - **Replace**: Overwrite existing files
+  - **Skip**: Keep existing files, skip new ones
+  - **Rename**: Add numbers to create unique filenames (e.g., file (1).txt)
 - **Size Limit**: Set maximum extraction size (default: 20 GB)
 - **Strip Components**: Remove leading path components from extracted files
 - **Allow Symlinks**: Enable/disable symbolic link extraction (disabled by default for security)
 - **Allow Hardlinks**: Enable/disable hard link extraction (disabled by default for security)
 - **Theme**: Choose between light, dark, or system theme
 
+**Note**: When using "Extract to custom folder", the overwrite mode is automatically set to "replace" for convenience.
+
 ## Supported Formats
 
-| Format | Extensions | Password Support |
-|--------|-----------|------------------|
-| ZIP | .zip | ✓ |
-| 7-Zip | .7z | ✓ |
-| RAR | .rar | ✓ (read-only) |
-| TAR | .tar | ✗ |
-| GZIP | .gz, .tgz | ✗ |
-| BZIP2 | .bz2, .tbz2 | ✗ |
-| XZ | .xz, .txz | ✗ |
-| ISO | .iso | ✗ |
+| Format | Extensions | Password Support | Multi-Part Support |
+|--------|-----------|------------------|-------------------|
+| ZIP | .zip | ✓ | ⚠️ Limited |
+| 7-Zip | .7z | ✓ | ⚠️ Limited |
+| RAR | .rar, .part1.rar, .r00 | ✓ | ✅ Full |
+| TAR | .tar | ✗ | N/A |
+| GZIP | .gz, .tgz | ✗ | N/A |
+| BZIP2 | .bz2, .tbz2 | ✗ | N/A |
+| XZ | .xz, .txz | ✗ | N/A |
+| ISO | .iso | ✗ | N/A |
+
+**Multi-Part Archive Notes:**
+- **RAR**: Full support for `.part1.rar`, `.part01.rar`, `.r00`, `.r01`, etc. Select any part and extraction will automatically start from the first part.
+- **7-Zip/ZIP**: Limited support. Multi-part `.7z.001`/`.zip.001` archives are detected but may require external tools to combine parts before extraction.
 
 ## Security
 
@@ -187,6 +230,21 @@ For signed releases, this shouldn't be necessary.
 ### Extraction fails with "Permission Denied"
 
 Ensure you have write permissions to the output directory. Try selecting a different output location.
+
+### Multi-part archives not working
+
+**RAR archives**: Should work automatically. Select any part (e.g., `.part3.rar`) and the app will find and use the first part.
+
+**7-Zip/ZIP archives**: Multi-part `.7z.001`/`.zip.001` archives are not fully supported. You can:
+1. Use an external tool (like 7-Zip or The Unarchiver) to combine the parts first
+2. Use the command line: `cat file.7z.* > combined.7z` then extract `combined.7z`
+
+### Archive appears corrupted
+
+1. Verify the archive is complete and not corrupted using another tool
+2. For multi-part archives, ensure all parts are in the same directory
+3. Check that you have the first part (`.part1.rar`, `.001`, etc.)
+4. Try extracting with verbose logging enabled (check console output)
 
 ## License
 
