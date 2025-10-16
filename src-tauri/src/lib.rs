@@ -25,10 +25,9 @@ pub fn run() {
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
                 // Filter for supported archive extensions
                 let archive_extensions = [
-                    "zip", "7z", "rar", "tar", "gz", "bz2", "xz",
-                    "tgz", "tbz2", "txz", "iso"
+                    "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz2", "txz", "iso",
                 ];
-                
+
                 let archive_paths: Vec<String> = paths
                     .iter()
                     .filter(|path| {
@@ -40,7 +39,7 @@ pub fn run() {
                     })
                     .map(|p| p.to_string_lossy().to_string())
                     .collect();
-                
+
                 if !archive_paths.is_empty() {
                     // Emit event to frontend to queue these archives
                     let _ = window.emit("files_opened", archive_paths);
