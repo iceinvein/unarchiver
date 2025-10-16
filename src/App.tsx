@@ -1,19 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useStore } from '@nanostores/react';
 import { Navbar, NavbarBrand, NavbarContent, NavbarItem } from '@heroui/navbar';
 import { Button } from '@heroui/button';
-import { Spacer } from '@heroui/spacer';
-import { Sun, Moon, Monitor, Archive } from 'lucide-react';
-import { themeAtom, setTheme, updateQueueItem } from './lib/store';
+import { Drawer, DrawerContent, DrawerHeader, DrawerBody } from '@heroui/drawer';
+import { Badge } from '@heroui/badge';
+import { Sun, Moon, Monitor, Archive, List, Settings as SettingsIcon } from 'lucide-react';
+import { themeAtom, setTheme, updateQueueItem, queueMap, settingsModalAtom } from './lib/store';
 import { onProgress, onCompletion, onPasswordRequired, onFilesOpened } from './lib/api';
 import type { ProgressEvent, CompletionEvent, PasswordRequiredEvent } from './lib/api';
-import DropZone from './components/DropZone';
+import MainLayout from './components/MainLayout';
 import QueueList from './components/QueueList';
-import Settings from './components/Settings';
 import PasswordPrompt from './components/PasswordPrompt';
+import ToastContainer from './components/ToastContainer';
+import Settings from './components/Settings';
+import { showSuccess, showError } from './lib/toast';
 
 function App() {
   const theme = useStore(themeAtom);
+  const queue = useStore(queueMap);
   const [passwordPrompt, setPasswordPrompt] = useState<{
     isOpen: boolean;
     jobId: string;
@@ -23,6 +27,13 @@ function App() {
     jobId: '',
     archivePath: '',
   });
+  const [isQueueDrawerOpen, setIsQueueDrawerOpen] = useState(false);
+  const completedJobsRef = useRef<Set<string>>(new Set());
+
+  // Count active queue items (pending or extracting)
+  const activeQueueCount = Object.values(queue).filter(
+    item => item.status === 'pending' || item.status === 'extracting'
+  ).length;
 
   // Set up event listeners
   useEffect(() => {
@@ -49,10 +60,31 @@ function App() {
       // Completion events
       unlistenCompletion = await onCompletion((event: CompletionEvent) => {
         console.log('Completion event received:', event);
+        console.log('Event status type:', typeof event.status, 'value:', event.status);
         
-        const status = event.status.toLowerCase() === 'success' 
+        // Check if we've already processed this completion
+        if (completedJobsRef.current.has(event.jobId)) {
+          console.log('Duplicate completion event ignored for job:', event.jobId);
+          return;
+        }
+        
+        // Mark this job as completed
+        completedJobsRef.current.add(event.jobId);
+        
+        // Handle status - it might be an object with a variant
+        let statusStr: string;
+        if (typeof event.status === 'string') {
+          statusStr = event.status.toLowerCase();
+        } else if (typeof event.status === 'object' && event.status !== null) {
+          // Handle enum-like object from Rust
+          statusStr = String(event.status).toLowerCase();
+        } else {
+          statusStr = 'failed';
+        }
+        
+        const status = statusStr === 'success' 
           ? 'completed' 
-          : event.status.toLowerCase() === 'cancelled' 
+          : statusStr === 'cancelled' 
           ? 'cancelled' 
           : 'failed';
 
@@ -64,6 +96,19 @@ function App() {
           error: event.error || undefined,
           progress: undefined,
         });
+
+        // Show toast notification based on status
+        console.log('About to show toast for status:', status);
+        if (status === 'completed') {
+          const archiveName = event.archivePath.split('/').pop() || 'Archive';
+          console.log('Showing success toast for:', archiveName);
+          showSuccess(`Successfully extracted: ${archiveName}`);
+        } else if (status === 'failed') {
+          const archiveName = event.archivePath.split('/').pop() || 'Archive';
+          const errorMsg = event.error || 'Unknown error';
+          console.log('Showing error toast for:', archiveName);
+          showError(`Extraction failed for ${archiveName}: ${errorMsg}`);
+        }
       });
 
       // Password required events
@@ -78,20 +123,8 @@ function App() {
       // Files opened from Finder (double-click or drag to app icon)
       unlistenFilesOpened = await onFilesOpened(async (paths: string[]) => {
         // Import dynamically to avoid circular dependencies
-        const { open } = await import('@tauri-apps/plugin-dialog');
-        const { probeArchive, extractArchives } = await import('./lib/api');
+        const { probeArchive, extractArchives, getUniqueOutputPath } = await import('./lib/api');
         const { settingsAtom, addToQueue } = await import('./lib/store');
-        
-        // Get output directory from user
-        const outputDir = await open({
-          directory: true,
-          multiple: false,
-          title: 'Select Output Directory',
-        });
-
-        if (!outputDir || typeof outputDir !== 'string') {
-          return;
-        }
 
         // Get current settings
         const settings = settingsAtom.get();
@@ -102,9 +135,15 @@ function App() {
             // Probe the archive to get metadata
             await probeArchive(path);
             
-            // Create queue item
+            // Get unique output path with conflict resolution
+            const outputDir = await getUniqueOutputPath(path);
+
+            // Start extraction
+            const jobId = await extractArchives([path], outputDir, settings);
+            
+            // Create queue item with the actual job ID
             const queueItem = {
-              id: crypto.randomUUID(),
+              id: jobId,
               archivePath: path,
               outputDir,
               status: 'pending' as const,
@@ -112,22 +151,23 @@ function App() {
 
             // Add to queue
             addToQueue(queueItem);
-
-            // Start extraction
-            const jobId = await extractArchives([path], outputDir, settings);
             
-            // Update queue item with actual job ID
-            addToQueue({ ...queueItem, id: jobId });
+            const archiveName = path.split('/').pop() || 'Archive';
+            showSuccess(`Started extracting: ${archiveName}`);
           } catch (error) {
             console.error(`Failed to process ${path}:`, error);
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            const archiveName = path.split('/').pop() || 'Archive';
+            
+            showError(`Failed to process ${archiveName}: ${errorMsg}`);
             
             // Add failed item to queue
             addToQueue({
               id: crypto.randomUUID(),
               archivePath: path,
-              outputDir,
+              outputDir: '',
               status: 'failed' as const,
-              error: error instanceof Error ? error.message : 'Unknown error',
+              error: errorMsg,
             });
           }
         }
@@ -175,7 +215,7 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Navbar */}
       <Navbar isBordered maxWidth="full">
         <NavbarBrand>
@@ -183,6 +223,33 @@ function App() {
           <p className="font-bold text-xl">Unarchive</p>
         </NavbarBrand>
         <NavbarContent justify="end">
+          <NavbarItem>
+            <Badge 
+              content={activeQueueCount} 
+              color="primary" 
+              isInvisible={activeQueueCount === 0}
+              shape="circle"
+            >
+              <Button
+                isIconOnly
+                variant="light"
+                onPress={() => setIsQueueDrawerOpen(true)}
+                aria-label="View extraction queue"
+              >
+                <List className="w-5 h-5" />
+              </Button>
+            </Badge>
+          </NavbarItem>
+          <NavbarItem>
+            <Button
+              isIconOnly
+              variant="light"
+              onPress={() => settingsModalAtom.set(true)}
+              aria-label="Open settings"
+            >
+              <SettingsIcon className="w-5 h-5" />
+            </Button>
+          </NavbarItem>
           <NavbarItem>
             <Button
               isIconOnly
@@ -196,21 +263,27 @@ function App() {
         </NavbarContent>
       </Navbar>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8 max-w-7xl">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Drop Zone and Queue */}
-          <div className="lg:col-span-2 space-y-6">
-            <DropZone />
-            <QueueList />
-          </div>
-
-          {/* Right Column - Settings */}
-          <div className="lg:col-span-1">
-            <Settings />
-          </div>
-        </div>
+      {/* Main Content - Full height layout */}
+      <main className="flex-1 overflow-hidden">
+        <MainLayout />
       </main>
+
+      {/* Queue Drawer - Background notification area */}
+      <Drawer
+        isOpen={isQueueDrawerOpen}
+        onClose={() => setIsQueueDrawerOpen(false)}
+        placement="right"
+        size="md"
+      >
+        <DrawerContent>
+          <DrawerHeader>
+            <h2 className="text-xl font-semibold">Extraction Queue</h2>
+          </DrawerHeader>
+          <DrawerBody>
+            <QueueList />
+          </DrawerBody>
+        </DrawerContent>
+      </Drawer>
 
       {/* Password Prompt Modal */}
       <PasswordPrompt
@@ -220,7 +293,11 @@ function App() {
         archivePath={passwordPrompt.archivePath}
       />
 
-      <Spacer y={4} />
+      {/* Settings Modal */}
+      <Settings />
+
+      {/* Toast Notifications */}
+      <ToastContainer />
     </div>
   );
 }

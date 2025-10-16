@@ -1,7 +1,7 @@
 use crate::state::{AppState, JobHandle};
 use extractor::{ExtractOptions, ExtractStats, OverwriteMode};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
@@ -366,5 +366,157 @@ pub async fn provide_password(
         Ok(())
     } else {
         Err(format!("Job not found: {}", job_id))
+    }
+}
+
+/// File system entry metadata
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/lib/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct FileSystemEntry {
+    pub name: String,
+    pub path: String,
+    pub is_directory: bool,
+    pub is_archive: bool,
+    #[ts(optional, type = "number")]
+    pub size: Option<u64>,
+    #[ts(optional, type = "number")]
+    pub modified_at: Option<u64>,
+}
+
+/// List directory contents with metadata
+#[tauri::command]
+pub async fn list_directory(path: String) -> Result<Vec<FileSystemEntry>, String> {
+    let dir_path = PathBuf::from(&path);
+
+    // Run in blocking context since it does I/O
+    tokio::task::spawn_blocking(move || {
+        let mut entries = Vec::new();
+
+        // Check if path exists and is a directory
+        if !dir_path.exists() {
+            return Err(format!("Path does not exist: {}", path));
+        }
+
+        if !dir_path.is_dir() {
+            return Err(format!("Path is not a directory: {}", path));
+        }
+
+        // Read directory entries
+        let read_dir =
+            std::fs::read_dir(&dir_path).map_err(|e| format!("Failed to read directory: {}", e))?;
+
+        for entry_result in read_dir {
+            let entry = entry_result.map_err(|e| format!("Failed to read entry: {}", e))?;
+            let entry_path = entry.path();
+            let metadata = entry
+                .metadata()
+                .map_err(|e| format!("Failed to read metadata: {}", e))?;
+
+            let name = entry.file_name().to_string_lossy().to_string();
+
+            let path_str = entry_path.to_string_lossy().to_string();
+            let is_directory = metadata.is_dir();
+
+            // Check if file is an archive based on extension
+            let is_archive = if !is_directory {
+                is_archive_file(&entry_path)
+            } else {
+                false
+            };
+
+            let size = if !is_directory {
+                Some(metadata.len())
+            } else {
+                None
+            };
+
+            let modified_at = metadata.modified().ok().and_then(|time| {
+                time.duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_secs())
+            });
+
+            entries.push(FileSystemEntry {
+                name,
+                path: path_str,
+                is_directory,
+                is_archive,
+                size,
+                modified_at,
+            });
+        }
+
+        // Sort: directories first, then by name
+        entries.sort_by(|a, b| match (a.is_directory, b.is_directory) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        });
+
+        Ok(entries)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Get user's home directory path
+#[tauri::command]
+pub async fn get_home_directory() -> Result<String, String> {
+    dirs::home_dir()
+        .ok_or_else(|| "Failed to get home directory".to_string())
+        .map(|path| path.to_string_lossy().to_string())
+}
+
+/// Check if a path exists
+#[tauri::command]
+pub async fn check_path_exists(path: String) -> Result<bool, String> {
+    let path_buf = PathBuf::from(path);
+    Ok(path_buf.exists())
+}
+
+/// Get a unique output path for extraction with conflict resolution
+#[tauri::command]
+pub async fn get_unique_output_path(archive_path: String) -> Result<String, String> {
+    let archive = PathBuf::from(&archive_path);
+
+    // Get the directory containing the archive
+    let parent_dir = archive
+        .parent()
+        .ok_or_else(|| "Failed to get parent directory".to_string())?;
+
+    // Get the archive filename without extension
+    let base_name = archive
+        .file_stem()
+        .ok_or_else(|| "Failed to get archive filename".to_string())?
+        .to_string_lossy()
+        .to_string();
+
+    // Start with the base name
+    let mut output_path = parent_dir.join(&base_name);
+    let mut counter = 1;
+
+    // Keep incrementing until we find a unique name
+    while output_path.exists() {
+        let new_name = format!("{} ({})", base_name, counter);
+        output_path = parent_dir.join(new_name);
+        counter += 1;
+    }
+
+    Ok(output_path.to_string_lossy().to_string())
+}
+
+/// Helper function to check if a file is an archive based on extension
+fn is_archive_file(path: &Path) -> bool {
+    const ARCHIVE_EXTENSIONS: &[&str] = &[
+        "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz2", "txz", "iso", "cab", "lz",
+        "lzma", "z", "cpio", "rpm", "deb", "dmg",
+    ];
+
+    if let Some(ext) = path.extension() {
+        let ext_lower = ext.to_string_lossy().to_lowercase();
+        ARCHIVE_EXTENSIONS.contains(&ext_lower.as_str())
+    } else {
+        false
     }
 }

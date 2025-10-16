@@ -174,7 +174,6 @@ export default function QueueList() {
 
   return (
     <div className="space-y-3">
-      <h3 className="text-xl font-semibold mb-4">Extraction Queue</h3>
       {queueItems.map((item) => (
         <QueueItemCard key={item.id} item={item} />
       ))}

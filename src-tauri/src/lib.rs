@@ -16,6 +16,10 @@ pub fn run() {
             commands::probe,
             commands::cancel_job,
             commands::provide_password,
+            commands::list_directory,
+            commands::get_home_directory,
+            commands::check_path_exists,
+            commands::get_unique_output_path,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {

@@ -29,12 +29,14 @@ cd src-tauri && cargo run --bin export_types
 ## Available Types
 
 - `ArchiveInfo` - Metadata about an archive file
+- `ArchiveEntry` - Individual entry within an archive (file or directory)
 - `ExtractStats` - Statistics from a completed extraction
 - `ExtractOptionsDTO` - Options for extraction operations
 - `ProgressEvent` - Real-time progress updates during extraction
 - `CompletionEvent` - Extraction completion notification
 - `PasswordRequiredEvent` - Password prompt event
 - `JobStatus` - Extraction job status enum
+- `FileSystemEntry` - File system entry with metadata
 
 ## Usage
 

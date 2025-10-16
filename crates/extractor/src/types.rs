@@ -4,9 +4,28 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use ts_rs::TS;
 
+/// Individual entry within an archive.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../src/lib/bindings/")]
+pub struct ArchiveEntry {
+    /// Path of the entry within the archive
+    pub path: String,
+
+    /// Whether this entry is a directory
+    pub is_directory: bool,
+
+    /// Uncompressed size in bytes
+    #[ts(type = "number")]
+    pub size: u64,
+
+    /// Compressed size in bytes (if available)
+    #[ts(optional, type = "number")]
+    pub compressed_size: Option<u64>,
+}
+
 /// Metadata information about an archive.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src-tauri/../src/lib/bindings/")]
+#[ts(export, export_to = "../../../src/lib/bindings/")]
 pub struct ArchiveInfo {
     /// Archive format (e.g., "ZIP", "TAR", "7Z")
     pub format: String,
@@ -25,6 +44,9 @@ pub struct ArchiveInfo {
 
     /// Whether the archive is password-protected
     pub encrypted: bool,
+
+    /// List of all entries in the archive
+    pub entry_list: Vec<ArchiveEntry>,
 }
 
 /// Options for extracting an archive.
@@ -78,7 +100,7 @@ pub enum OverwriteMode {
 
 /// Statistics about a completed extraction operation.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src-tauri/../src/lib/bindings/")]
+#[ts(export, export_to = "../../../src/lib/bindings/")]
 pub struct ExtractStats {
     /// Number of files successfully extracted
     #[ts(type = "number")]

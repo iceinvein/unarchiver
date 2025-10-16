@@ -4,18 +4,21 @@ import type { Settings } from './types';
 
 // Import and re-export generated types from Rust
 export type { ArchiveInfo } from './bindings/ArchiveInfo';
+export type { ArchiveEntry } from './bindings/ArchiveEntry';
 export type { ExtractStats } from './bindings/ExtractStats';
 export type { ExtractOptionsDTO } from './bindings/ExtractOptionsDTO';
 export type { ProgressEvent } from './bindings/ProgressEvent';
 export type { CompletionEvent } from './bindings/CompletionEvent';
 export type { PasswordRequiredEvent } from './bindings/PasswordRequiredEvent';
 export type { JobStatus } from './bindings/JobStatus';
+export type { FileSystemEntry } from './bindings/FileSystemEntry';
 
 import type { ExtractOptionsDTO } from './bindings/ExtractOptionsDTO';
 import type { ArchiveInfo } from './bindings/ArchiveInfo';
 import type { ProgressEvent } from './bindings/ProgressEvent';
 import type { CompletionEvent } from './bindings/CompletionEvent';
 import type { PasswordRequiredEvent } from './bindings/PasswordRequiredEvent';
+import type { FileSystemEntry } from './bindings/FileSystemEntry';
 
 // Convert Settings to ExtractOptionsDTO
 function settingsToOptions(settings: Settings, password?: string): ExtractOptionsDTO {
@@ -127,4 +130,39 @@ export async function onFilesOpened(
   return await listen<string[]>('files_opened', (event) => {
     callback(event.payload);
   });
+}
+
+/**
+ * List directory contents with metadata
+ * @param path - Directory path to list
+ * @returns Array of file system entries
+ */
+export async function listDirectory(path: string): Promise<FileSystemEntry[]> {
+  return await invoke<FileSystemEntry[]>('list_directory', { path });
+}
+
+/**
+ * Get user's home directory path
+ * @returns Home directory path
+ */
+export async function getHomeDirectory(): Promise<string> {
+  return await invoke<string>('get_home_directory');
+}
+
+/**
+ * Check if a path exists
+ * @param path - Path to check
+ * @returns True if path exists, false otherwise
+ */
+export async function checkPathExists(path: string): Promise<boolean> {
+  return await invoke<boolean>('check_path_exists', { path });
+}
+
+/**
+ * Get a unique output path for extraction with conflict resolution
+ * @param archivePath - Archive file path
+ * @returns Unique output directory path
+ */
+export async function getUniqueOutputPath(archivePath: string): Promise<string> {
+  return await invoke<string>('get_unique_output_path', { archivePath });
 }

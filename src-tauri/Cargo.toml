@@ -41,6 +41,7 @@ tracing = { workspace = true }
 uuid = { version = "1", features = ["v4", "serde"] }
 parking_lot = "0.12"
 ts-rs = "9.0"
+dirs = "5.0"
 
 # Local dependencies
 extractor = { path = "../crates/extractor" }

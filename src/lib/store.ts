@@ -1,5 +1,6 @@
 import { atom, map } from 'nanostores';
 import type { QueueItem, Settings, Theme } from './types';
+import type { ArchiveInfo } from './bindings/ArchiveInfo';
 
 // Default settings
 const defaultSettings: Settings = {
@@ -18,6 +19,26 @@ export const settingsAtom = atom<Settings>(defaultSettings);
 
 // Queue map - stores extraction jobs keyed by job_id
 export const queueMap = map<Record<string, QueueItem>>({});
+
+// Current directory in file explorer
+export const currentDirectoryAtom = atom<string>('');
+
+// Selected archive path
+export const selectedArchiveAtom = atom<string | null>(null);
+
+// Settings modal visibility
+export const settingsModalAtom = atom<boolean>(false);
+
+// Archive preview data and loading state
+export const archivePreviewAtom = atom<{
+  isLoading: boolean;
+  contents: ArchiveInfo | null;
+  error: string | null;
+}>({
+  isLoading: false,
+  contents: null,
+  error: null,
+});
 
 // Helper functions for queue management
 export const addToQueue = (item: QueueItem) => {
@@ -59,4 +80,54 @@ export const resetSettings = () => {
 // Helper function for theme
 export const setTheme = (theme: Theme) => {
   themeAtom.set(theme);
+};
+
+// Helper functions for file explorer state
+export const setCurrentDirectory = (path: string) => {
+  currentDirectoryAtom.set(path);
+};
+
+export const setSelectedArchive = (path: string | null) => {
+  selectedArchiveAtom.set(path);
+};
+
+// Helper functions for archive preview state
+export const setArchivePreviewLoading = (isLoading: boolean) => {
+  archivePreviewAtom.set({
+    ...archivePreviewAtom.get(),
+    isLoading,
+  });
+};
+
+export const setArchivePreviewContents = (contents: ArchiveInfo | null) => {
+  archivePreviewAtom.set({
+    isLoading: false,
+    contents,
+    error: null,
+  });
+};
+
+export const setArchivePreviewError = (error: string) => {
+  archivePreviewAtom.set({
+    isLoading: false,
+    contents: null,
+    error,
+  });
+};
+
+export const clearArchivePreview = () => {
+  archivePreviewAtom.set({
+    isLoading: false,
+    contents: null,
+    error: null,
+  });
+};
+
+// Helper functions for settings modal
+export const openSettingsModal = () => {
+  settingsModalAtom.set(true);
+};
+
+export const closeSettingsModal = () => {
+  settingsModalAtom.set(false);
 };

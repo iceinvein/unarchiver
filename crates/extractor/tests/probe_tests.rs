@@ -56,6 +56,70 @@ fn create_tar_gz_archive(archive_path: &PathBuf, files: &[(&str, &[u8])]) -> std
     Ok(())
 }
 
+/// Helper function to create a TAR.BZ2 archive
+fn create_tar_bz2_archive(archive_path: &PathBuf, files: &[(&str, &[u8])]) -> std::io::Result<()> {
+    use bzip2::write::BzEncoder;
+    
+    let file = File::create(archive_path)?;
+    let encoder = BzEncoder::new(file, bzip2::Compression::default());
+    let mut tar = tar::Builder::new(encoder);
+    
+    for (name, content) in files {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(content.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        tar.append_data(&mut header, name, &content[..])?;
+    }
+    
+    tar.finish()?;
+    Ok(())
+}
+
+/// Helper function to create a TAR.XZ archive
+fn create_tar_xz_archive(archive_path: &PathBuf, files: &[(&str, &[u8])]) -> std::io::Result<()> {
+    use xz2::write::XzEncoder;
+    
+    let file = File::create(archive_path)?;
+    let encoder = XzEncoder::new(file, 6);
+    let mut tar = tar::Builder::new(encoder);
+    
+    for (name, content) in files {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(content.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        tar.append_data(&mut header, name, &content[..])?;
+    }
+    
+    tar.finish()?;
+    Ok(())
+}
+
+/// Helper function to create a 7z archive
+fn create_7z_archive(archive_path: &PathBuf, files: &[(&str, &[u8])]) -> std::io::Result<()> {
+    use sevenz_rust::SevenZWriter;
+    
+    let file = File::create(archive_path)?;
+    let mut sz = SevenZWriter::new(file)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    
+    for (name, content) in files {
+        sz.push_archive_entry(
+            sevenz_rust::SevenZArchiveEntry::from_path(
+                std::path::Path::new(name),
+                name.to_string(),
+            ),
+            Some(std::io::Cursor::new(content)),
+        )
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    }
+    
+    sz.finish()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    Ok(())
+}
+
 #[test]
 fn test_probe_zip_archive() {
     let temp_dir = setup_test_dir();
@@ -89,20 +153,61 @@ fn test_probe_tar_gz_archive() {
     assert_eq!(info.format, "TAR.GZ");
     assert_eq!(info.entries, 1);
     assert!(info.compressed_bytes.is_some());
+    
+    // Verify entry list is populated
+    assert_eq!(info.entry_list.len(), 1);
+    let entry = &info.entry_list[0];
+    assert_eq!(entry.path, "test.txt");
+    assert!(!entry.is_directory);
+    assert_eq!(entry.size, 13); // "Hello, World!" is 13 bytes
 }
 
 #[test]
-#[ignore] // Requires bzip2 library - would be tested with pre-created fixtures
 fn test_probe_tar_bz2_archive() {
-    // This test would use a pre-created TAR.BZ2 archive from a fixtures directory
-    // For now, we mark it as ignored
+    let temp_dir = setup_test_dir();
+    let archive_path = temp_dir.path().join("test.tar.bz2");
+    
+    // Create a TAR.BZ2 archive
+    create_tar_bz2_archive(&archive_path, &[("test.txt", b"Hello, BZ2!")])
+        .expect("Failed to create TAR.BZ2");
+    
+    // Probe the archive
+    let info = probe(&archive_path).expect("Failed to probe archive");
+    
+    assert_eq!(info.format, "TAR.BZ2");
+    assert_eq!(info.entries, 1);
+    assert!(info.compressed_bytes.is_some());
+    
+    // Verify entry list is populated
+    assert_eq!(info.entry_list.len(), 1);
+    let entry = &info.entry_list[0];
+    assert_eq!(entry.path, "test.txt");
+    assert!(!entry.is_directory);
+    assert_eq!(entry.size, 11); // "Hello, BZ2!" is 11 bytes
 }
 
 #[test]
-#[ignore] // Requires xz library - would be tested with pre-created fixtures
 fn test_probe_tar_xz_archive() {
-    // This test would use a pre-created TAR.XZ archive from a fixtures directory
-    // For now, we mark it as ignored
+    let temp_dir = setup_test_dir();
+    let archive_path = temp_dir.path().join("test.tar.xz");
+    
+    // Create a TAR.XZ archive
+    create_tar_xz_archive(&archive_path, &[("test.txt", b"Hello, XZ!")])
+        .expect("Failed to create TAR.XZ");
+    
+    // Probe the archive
+    let info = probe(&archive_path).expect("Failed to probe archive");
+    
+    assert_eq!(info.format, "TAR.XZ");
+    assert_eq!(info.entries, 1);
+    assert!(info.compressed_bytes.is_some());
+    
+    // Verify entry list is populated
+    assert_eq!(info.entry_list.len(), 1);
+    let entry = &info.entry_list[0];
+    assert_eq!(entry.path, "test.txt");
+    assert!(!entry.is_directory);
+    assert_eq!(entry.size, 10); // "Hello, XZ!" is 10 bytes
 }
 
 #[test]
@@ -181,6 +286,52 @@ fn test_probe_multiple_files() {
 }
 
 #[test]
+fn test_probe_entry_list() {
+    let temp_dir = setup_test_dir();
+    let archive_path = temp_dir.path().join("entries.zip");
+    
+    // Create a ZIP archive with multiple files and a directory
+    let file = File::create(&archive_path).expect("Failed to create archive");
+    let mut zip = zip::ZipWriter::new(file);
+    
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    
+    // Add a directory
+    zip.add_directory("folder/", options).expect("Failed to add directory");
+    
+    // Add files
+    zip.start_file("file1.txt", options).expect("Failed to start file");
+    zip.write_all(b"Content 1").expect("Failed to write file");
+    
+    zip.start_file("folder/file2.txt", options).expect("Failed to start file");
+    zip.write_all(b"Content 2 is longer").expect("Failed to write file");
+    
+    zip.finish().expect("Failed to finish ZIP");
+    
+    // Probe the archive
+    let info = probe(&archive_path).expect("Failed to probe archive");
+    
+    assert_eq!(info.format, "ZIP");
+    assert_eq!(info.entries, 3);
+    assert_eq!(info.entry_list.len(), 3);
+    
+    // Verify entry details
+    let folder_entry = info.entry_list.iter().find(|e| e.path == "folder/").expect("Folder not found");
+    assert!(folder_entry.is_directory);
+    
+    let file1_entry = info.entry_list.iter().find(|e| e.path == "file1.txt").expect("file1.txt not found");
+    assert!(!file1_entry.is_directory);
+    assert_eq!(file1_entry.size, 9); // "Content 1" is 9 bytes
+    assert!(file1_entry.compressed_size.is_some());
+    
+    let file2_entry = info.entry_list.iter().find(|e| e.path == "folder/file2.txt").expect("folder/file2.txt not found");
+    assert!(!file2_entry.is_directory);
+    assert_eq!(file2_entry.size, 19); // "Content 2 is longer" is 19 bytes
+    assert!(file2_entry.compressed_size.is_some());
+}
+
+#[test]
 fn test_probe_unsupported_format() {
     let temp_dir = setup_test_dir();
     
@@ -234,10 +385,27 @@ fn test_probe_password_protected_archive() {
 }
 
 #[test]
-#[ignore] // Ignored because compress-tools doesn't support 7z creation
 fn test_probe_7z_archive() {
-    // This test would require a pre-created 7z archive or a library that can create them
-    // For now, we mark it as ignored and would implement it with proper test fixtures
+    let temp_dir = setup_test_dir();
+    let archive_path = temp_dir.path().join("test.7z");
+    
+    // Create a 7z archive
+    create_7z_archive(&archive_path, &[("test.txt", b"Hello, 7z!")])
+        .expect("Failed to create 7z");
+    
+    // Probe the archive
+    let info = probe(&archive_path).expect("Failed to probe archive");
+    
+    assert_eq!(info.format, "7Z");
+    assert_eq!(info.entries, 1);
+    assert!(info.compressed_bytes.is_some());
+    
+    // Verify entry list is populated
+    assert_eq!(info.entry_list.len(), 1);
+    let entry = &info.entry_list[0];
+    assert_eq!(entry.path, "test.txt");
+    assert!(!entry.is_directory);
+    assert_eq!(entry.size, 10); // "Hello, 7z!" is 10 bytes
 }
 
 #[test]

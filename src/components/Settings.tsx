@@ -1,12 +1,12 @@
 import { useStore } from '@nanostores/react';
-import { Card, CardBody, CardHeader } from '@heroui/card';
+import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter } from '@heroui/modal';
 import { Select, SelectItem } from '@heroui/select';
 import { Input } from '@heroui/input';
 import { Switch } from '@heroui/switch';
 import { Divider } from '@heroui/divider';
 import { Button } from '@heroui/button';
 import { RotateCcw, Settings as SettingsIcon } from 'lucide-react';
-import { settingsAtom, themeAtom, updateSettings, resetSettings, setTheme } from '../lib/store';
+import { settingsAtom, themeAtom, settingsModalAtom, updateSettings, resetSettings, setTheme } from '../lib/store';
 import type { OverwriteMode, Theme } from '../lib/types';
 import { useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -14,6 +14,7 @@ import { invoke } from '@tauri-apps/api/core';
 export default function Settings() {
   const settings = useStore(settingsAtom);
   const theme = useStore(themeAtom);
+  const isOpen = useStore(settingsModalAtom);
 
   // Load settings on mount
   useEffect(() => {
@@ -78,23 +79,23 @@ export default function Settings() {
     saveSettings();
   };
 
+  const handleClose = () => {
+    settingsModalAtom.set(false);
+  };
+
   return (
-    <Card className="w-full">
-      <CardHeader className="flex justify-between items-center">
-        <div className="flex items-center gap-2">
+    <Modal 
+      isOpen={isOpen} 
+      onClose={handleClose}
+      size="2xl"
+      scrollBehavior="inside"
+    >
+      <ModalContent>
+        <ModalHeader className="flex items-center gap-2">
           <SettingsIcon className="w-5 h-5" />
-          <h3 className="text-xl font-semibold">Settings</h3>
-        </div>
-        <Button
-          size="sm"
-          variant="light"
-          startContent={<RotateCcw className="w-4 h-4" />}
-          onPress={handleReset}
-        >
-          Reset
-        </Button>
-      </CardHeader>
-      <CardBody className="space-y-6">
+          <span>Settings</span>
+        </ModalHeader>
+        <ModalBody className="space-y-6">
         {/* Extraction Options */}
         <div className="space-y-4">
           <h4 className="text-sm font-semibold text-default-700">Extraction Options</h4>
@@ -195,7 +196,23 @@ export default function Settings() {
             </SelectItem>
           </Select>
         </div>
-      </CardBody>
-    </Card>
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            variant="light"
+            startContent={<RotateCcw className="w-4 h-4" />}
+            onPress={handleReset}
+          >
+            Reset to Defaults
+          </Button>
+          <Button
+            color="primary"
+            onPress={handleClose}
+          >
+            Close
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 }

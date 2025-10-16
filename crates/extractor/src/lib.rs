@@ -57,7 +57,7 @@ pub mod types;
 // Re-export main types
 pub use error::{ExtractError, SecurityError};
 pub use safety::EntryType;
-pub use types::{ArchiveInfo, ExtractOptions, ExtractStats, OverwriteMode};
+pub use types::{ArchiveEntry, ArchiveInfo, ExtractOptions, ExtractStats, OverwriteMode};
 
 use std::path::Path;
 use std::sync::atomic::AtomicBool;

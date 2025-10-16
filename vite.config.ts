@@ -8,6 +8,14 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
+  
+  // Vitest configuration
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
+    css: true,
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
@@ -30,4 +38,20 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  build: {
+		outDir: "dist",
+		rollupOptions: {
+			output: {
+				manualChunks: (path) => {
+					const reversedPath = path.split("/").reverse();
+					return reversedPath[reversedPath.indexOf("node_modules") - 1];
+				},
+			},
+			onwarn(warning, warn) {
+				if (warning.code === "MODULE_LEVEL_DIRECTIVE") return;
+				warn(warning);
+			},
+		},
+		chunkSizeWarningLimit: 1600,
+	},
 }));
