@@ -27,3 +27,5 @@ coverage
 .kiro
 
 target
+
+*.tsbuildinfo

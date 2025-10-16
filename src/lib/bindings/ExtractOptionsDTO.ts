@@ -3,4 +3,11 @@
 /**
  * DTO for extraction options from frontend
  */
-export type ExtractOptionsDTO = { overwrite: string, sizeLimitBytes?: number, stripComponents: number, allowSymlinks: boolean, allowHardlinks: boolean, password?: string, };
+export type ExtractOptionsDTO = {
+	overwrite: string;
+	sizeLimitBytes?: number;
+	stripComponents: number;
+	allowSymlinks: boolean;
+	allowHardlinks: boolean;
+	password?: string;
+};

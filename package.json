@@ -12,7 +12,9 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "lint": "biome check --write ./src",
+    "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
     "@heroui/button": "^2.2.27",
@@ -41,6 +43,7 @@
     "tailwindcss": "^4.1.14"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.2.6",
     "@tauri-apps/cli": "^2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",

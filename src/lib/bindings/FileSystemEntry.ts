@@ -3,4 +3,11 @@
 /**
  * File system entry metadata
  */
-export type FileSystemEntry = { name: string, path: string, isDirectory: boolean, isArchive: boolean, size?: number, modifiedAt?: number, };
+export type FileSystemEntry = {
+	name: string;
+	path: string;
+	isDirectory: boolean;
+	isArchive: boolean;
+	size?: number;
+	modifiedAt?: number;
+};
