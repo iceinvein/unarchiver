@@ -14,6 +14,8 @@ import { useStore } from "@nanostores/react";
 import { invoke } from "@tauri-apps/api/core";
 import { RotateCcw, Settings as SettingsIcon } from "lucide-react";
 import { useEffect } from "react";
+
+import type { SettingsData } from "../lib/bindings/SettingsData";
 import {
 	resetSettings,
 	setTheme,
@@ -22,6 +24,7 @@ import {
 	themeAtom,
 	updateSettings,
 } from "../lib/store";
+import { showError } from "../lib/toast";
 import type { OverwriteMode, Theme } from "../lib/types";
 
 export default function Settings() {
@@ -33,9 +36,16 @@ export default function Settings() {
 	useEffect(() => {
 		const loadSettings = async () => {
 			try {
-				const loaded = await invoke<Record<string, unknown>>("load_settings");
+				const loaded = await invoke<SettingsData>("load_settings");
 				if (loaded) {
-					updateSettings(loaded);
+					// Map backend field names to frontend
+					updateSettings({
+						overwriteMode: loaded.overwriteMode as OverwriteMode,
+						sizeLimitGB: loaded.sizeLimitGb,
+						stripComponents: loaded.stripComponents,
+						allowSymlinks: loaded.allowSymlinks,
+						allowHardlinks: loaded.allowHardlinks,
+					});
 				}
 			} catch (error) {
 				console.error("Failed to load settings:", error);
@@ -46,9 +56,18 @@ export default function Settings() {
 
 	const saveSettings = async () => {
 		try {
-			await invoke("save_settings", { settings });
+			// Map frontend field names to backend
+			const settingsData: SettingsData = {
+				overwriteMode: settings.overwriteMode,
+				sizeLimitGb: settings.sizeLimitGB,
+				stripComponents: settings.stripComponents,
+				allowSymlinks: settings.allowSymlinks,
+				allowHardlinks: settings.allowHardlinks,
+			};
+			await invoke("save_settings", { settings: settingsData });
 		} catch (error) {
 			console.error("Failed to save settings:", error);
+			showError("Failed to save settings");
 		}
 	};
 

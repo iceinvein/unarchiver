@@ -554,6 +554,8 @@ export default function FileExplorer({
 						if (node.entry.isArchive) {
 							e.preventDefault();
 							e.stopPropagation();
+							// Select the archive first
+							onArchiveSelect(node.entry.path);
 							setContextMenu({
 								x: e.clientX,
 								y: e.clientY,

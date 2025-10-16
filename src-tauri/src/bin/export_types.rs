@@ -15,6 +15,7 @@ fn main() {
     unarchiver_lib::commands::PasswordRequiredEvent::export()
         .expect("Failed to export PasswordRequiredEvent");
     unarchiver_lib::commands::FileSystemEntry::export().expect("Failed to export FileSystemEntry");
+    unarchiver_lib::commands::SettingsData::export().expect("Failed to export SettingsData");
 
     extractor::ArchiveInfo::export().expect("Failed to export ArchiveInfo");
     extractor::ExtractStats::export().expect("Failed to export ExtractStats");

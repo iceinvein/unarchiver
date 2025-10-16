@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -504,6 +504,94 @@ pub async fn get_unique_output_path(archive_path: String) -> Result<String, Stri
     }
 
     Ok(output_path.to_string_lossy().to_string())
+}
+
+/// Settings structure for persistence
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/lib/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsData {
+    pub overwrite_mode: String,
+    #[ts(type = "number")]
+    pub size_limit_gb: f64,
+    #[ts(type = "number")]
+    pub strip_components: u32,
+    pub allow_symlinks: bool,
+    pub allow_hardlinks: bool,
+}
+
+impl Default for SettingsData {
+    fn default() -> Self {
+        Self {
+            overwrite_mode: "rename".to_string(),
+            size_limit_gb: 20.0,
+            strip_components: 0,
+            allow_symlinks: false,
+            allow_hardlinks: false,
+        }
+    }
+}
+
+/// Save settings to disk
+#[tauri::command]
+pub async fn save_settings(app: AppHandle, settings: SettingsData) -> Result<(), String> {
+    // Get app data directory
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    // Create directory if it doesn't exist
+    tokio::fs::create_dir_all(&app_data_dir)
+        .await
+        .map_err(|e| format!("Failed to create app data directory: {}", e))?;
+
+    // Settings file path
+    let settings_path = app_data_dir.join("settings.json");
+
+    // Serialize settings to JSON
+    let json = serde_json::to_string_pretty(&settings)
+        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+
+    // Write to file
+    tokio::fs::write(&settings_path, json)
+        .await
+        .map_err(|e| format!("Failed to write settings file: {}", e))?;
+
+    Ok(())
+}
+
+/// Load settings from disk
+#[tauri::command]
+pub async fn load_settings(app: AppHandle) -> Result<SettingsData, String> {
+    // Get app data directory
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+
+    // Settings file path
+    let settings_path = app_data_dir.join("settings.json");
+
+    // Check if file exists
+    if !settings_path.exists() {
+        // Return default settings if file doesn't exist
+        return Ok(SettingsData::default());
+    }
+
+    // Read file
+    let contents = tokio::fs::read_to_string(&settings_path)
+        .await
+        .map_err(|e| format!("Failed to read settings file: {}", e))?;
+
+    // Parse JSON
+    let settings: SettingsData = serde_json::from_str(&contents).unwrap_or_else(|e| {
+        // If parsing fails (corrupted file), log error and return defaults
+        eprintln!("Failed to parse settings file: {}. Using defaults.", e);
+        SettingsData::default()
+    });
+
+    Ok(settings)
 }
 
 /// Helper function to check if a file is an archive based on extension

@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:cli": "cargo build --release --package unarchive-cli",
+    "build:full": "npm run build:cli && npm run tauri build",
     "preview": "vite preview",
     "tauri": "tauri",
     "generate-types": "cd src-tauri && cargo run --bin export_types",

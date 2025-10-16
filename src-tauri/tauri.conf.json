@@ -31,6 +31,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+
     "iOS": {},
     "macOS": {
       "minimumSystemVersion": "10.13"
