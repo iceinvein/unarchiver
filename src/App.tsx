@@ -70,6 +70,8 @@ function App() {
 		let unlistenFilesOpened: (() => void) | undefined;
 
 		const setupListeners = async () => {
+			console.log("Setting up event listeners...");
+
 			// Progress events
 			unlistenProgress = await onProgress((event: ProgressEvent) => {
 				console.log("Progress event received:", event);
@@ -217,6 +219,7 @@ function App() {
 		setupListeners();
 
 		return () => {
+			console.log("Cleaning up event listeners...");
 			unlistenProgress?.();
 			unlistenCompletion?.();
 			unlistenPassword?.();

@@ -53,11 +53,11 @@ cd /Applications/unarchiver.app/Contents/Resources/quick-action
 ### GUI Application
 
 1. **Launch the app** from Applications
-2. **Add archives** by:
-   - Dragging and dropping files into the window
-   - Clicking "Select Archives" to browse
-   - Double-clicking archive files in Finder (if file associations are set)
-3. **Choose output directory** when prompted
+2. **Browse and select archives** using the file explorer
+3. **Extract archives** by:
+   - Clicking the "Extract" button to extract to the default location (same directory as archive)
+   - Using the dropdown arrow next to "Extract" to choose a custom output folder
+   - Right-clicking archives in the file explorer for quick extraction
 4. **Monitor progress** in the queue list
 5. **Enter passwords** when prompted for encrypted archives
 

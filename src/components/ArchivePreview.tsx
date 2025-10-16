@@ -10,17 +10,17 @@ import {
 	FileArchive,
 	Folder,
 	Lock,
-	PackageOpen,
 	RefreshCw,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { ArchiveEntry, ArchiveInfo } from "../lib/api";
 import { probeArchive } from "../lib/api";
 import { showError, showWarning } from "../lib/toast";
+import SplitExtractButton from "./SplitExtractButton";
 
 interface ArchivePreviewProps {
 	archivePath: string | null;
-	onExtract: () => void;
+	onExtract: (customOutputDir?: string) => void;
 }
 
 interface TreeNode {
@@ -390,16 +390,9 @@ export default function ArchivePreview({
 						{archivePath ? getArchiveName() : "Archive Preview"}
 					</h3>
 					{archivePath && archiveInfo && (
-						<Button
-							color="primary"
-							size="sm"
-							isIconOnly
-							onPress={onExtract}
-							aria-label="Extract archive"
-							className="ml-2 flex-shrink-0"
-						>
-							<PackageOpen className="w-4 h-4" />
-						</Button>
+						<div className="ml-2 flex-shrink-0">
+							<SplitExtractButton onExtract={onExtract} />
+						</div>
 					)}
 				</div>
 			</CardHeader>

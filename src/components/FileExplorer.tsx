@@ -1,6 +1,7 @@
 import { Button } from "@heroui/button";
 import { Card, CardBody, CardHeader } from "@heroui/card";
 import { Spinner } from "@heroui/spinner";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
 	AlertCircle,
 	ChevronDown,
@@ -22,7 +23,7 @@ interface FileExplorerProps {
 	onPathChange: (path: string) => void;
 	selectedArchive: string | null;
 	onArchiveSelect: (path: string | null) => void;
-	onExtract: () => void;
+	onExtract: (customOutputDir?: string) => void;
 }
 
 interface TreeNode {
@@ -657,6 +658,7 @@ export default function FileExplorer({
 					onClick={(e) => e.stopPropagation()}
 				>
 					<button
+						type="button"
 						className="w-full px-4 py-2 text-left text-sm hover:bg-default-100 flex items-center gap-2 border-0 bg-transparent cursor-pointer"
 						onClick={() => {
 							onArchiveSelect(contextMenu.archivePath);
@@ -665,7 +667,33 @@ export default function FileExplorer({
 						}}
 					>
 						<PackageOpen className="w-4 h-4" />
-						Extract Archive
+						Extract Here
+					</button>
+					<button
+						type="button"
+						className="w-full px-4 py-2 text-left text-sm hover:bg-default-100 flex items-center gap-2 border-0 bg-transparent cursor-pointer"
+						onClick={async () => {
+							const archivePath = contextMenu.archivePath;
+							setContextMenu(null);
+
+							try {
+								const selected = await open({
+									directory: true,
+									multiple: false,
+									title: "Select extraction folder",
+								});
+
+								if (selected) {
+									onArchiveSelect(archivePath);
+									onExtract(selected);
+								}
+							} catch (error) {
+								console.error("Failed to select folder:", error);
+							}
+						}}
+					>
+						<FolderOpen className="w-4 h-4" />
+						Extract to Folder...
 					</button>
 				</div>
 			)}

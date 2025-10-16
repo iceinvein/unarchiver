@@ -12,12 +12,37 @@ export interface Toast {
 // Store for active toasts
 export const toastsAtom = atom<Toast[]>([]);
 
+// Track recent toasts to prevent duplicates
+const recentToasts = new Map<string, number>();
+const DUPLICATE_WINDOW_MS = 1000; // 1 second window for duplicate detection
+
 // Helper function to show a toast
 export function showToast(
 	message: string,
 	type: ToastType = "info",
 	duration = 5000,
 ) {
+	// Create a key for duplicate detection
+	const toastKey = `${type}:${message}`;
+	const now = Date.now();
+
+	// Check if we recently showed this exact toast
+	const lastShown = recentToasts.get(toastKey);
+	if (lastShown && now - lastShown < DUPLICATE_WINDOW_MS) {
+		console.log("Duplicate toast prevented:", message);
+		return lastShown.toString(); // Return a fake ID
+	}
+
+	// Record this toast
+	recentToasts.set(toastKey, now);
+
+	// Clean up old entries from the map
+	for (const [key, timestamp] of recentToasts.entries()) {
+		if (now - timestamp > DUPLICATE_WINDOW_MS) {
+			recentToasts.delete(key);
+		}
+	}
+
 	const id = crypto.randomUUID();
 	const toast: Toast = { id, message, type, duration };
 

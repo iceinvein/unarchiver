@@ -39,98 +39,117 @@ export default function MainLayout() {
 		return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`;
 	}, []);
 
-	const handleExtract = useCallback(async () => {
-		if (!selectedArchive) return;
+	const handleExtract = useCallback(
+		async (customOutputDir?: string) => {
+			if (!selectedArchive) return;
 
-		try {
-			// First, probe the archive to check size and validity
-			let archiveInfo: Awaited<ReturnType<typeof probeArchive>>;
 			try {
-				archiveInfo = await probeArchive(selectedArchive);
-			} catch (probeError) {
+				// First, probe the archive to check size and validity
+				let archiveInfo: Awaited<ReturnType<typeof probeArchive>>;
+				try {
+					archiveInfo = await probeArchive(selectedArchive);
+				} catch (probeError) {
+					const errorMsg =
+						probeError instanceof Error
+							? probeError.message
+							: "Failed to read archive";
+					showError(`Cannot extract: ${errorMsg}`);
+					return;
+				}
+
+				// Check if archive is too large (basic check - actual disk space check would need native API)
+				const estimatedSize = archiveInfo.uncompressed_estimate || 0;
+				const sizeLimitBytes =
+					settings.sizeLimitGB > 0
+						? settings.sizeLimitGB * 1024 * 1024 * 1024
+						: Infinity;
+
+				if (estimatedSize > sizeLimitBytes) {
+					showError(
+						`Archive size (${formatBytes(estimatedSize)}) exceeds the configured limit (${settings.sizeLimitGB} GB)`,
+					);
+					return;
+				}
+
+				// Warn if archive is very large
+				if (estimatedSize > 10 * 1024 * 1024 * 1024) {
+					// > 10 GB
+					showWarning(
+						`Large archive detected (${formatBytes(estimatedSize)}). Extraction may take a while.`,
+					);
+				}
+
+				// Get output directory - use custom if provided, otherwise get unique path
+				const outputDir = customOutputDir
+					? customOutputDir
+					: await getUniqueOutputPath(selectedArchive);
+
+				// Use custom settings for custom extraction (always replace)
+				const extractSettings = customOutputDir
+					? { ...settings, overwriteMode: "replace" as const }
+					: settings;
+
+				// Start extraction
+				const jobId = await extractArchives(
+					[selectedArchive],
+					outputDir,
+					extractSettings,
+				);
+
+				// Create queue item with the actual job ID
+				const queueItem = {
+					id: jobId,
+					archivePath: selectedArchive,
+					outputDir,
+					status: "pending" as const,
+				};
+
+				// Add to queue
+				addToQueue(queueItem);
+
+				// Show appropriate success message
+				const archiveName = selectedArchive.split("/").pop() || "Archive";
+				if (customOutputDir) {
+					showSuccess(
+						`Extracting ${archiveName} to ${outputDir.split("/").pop()}`,
+					);
+				} else {
+					showSuccess(`Extraction started: ${outputDir.split("/").pop()}`);
+				}
+			} catch (error) {
+				console.error("Failed to start extraction:", error);
 				const errorMsg =
-					probeError instanceof Error
-						? probeError.message
-						: "Failed to read archive";
-				showError(`Cannot extract: ${errorMsg}`);
-				return;
+					error instanceof Error ? error.message : "Unknown error";
+
+				// Show user-friendly error message
+				if (
+					errorMsg.includes("Permission denied") ||
+					errorMsg.includes("permission")
+				) {
+					showError("Permission denied: Cannot create output directory");
+				} else if (
+					errorMsg.includes("disk space") ||
+					errorMsg.includes("space")
+				) {
+					showError("Insufficient disk space for extraction");
+				} else if (errorMsg.includes("not found")) {
+					showError("Archive file not found");
+				} else {
+					showError(`Failed to start extraction: ${errorMsg}`);
+				}
+
+				// Add failed item to queue
+				addToQueue({
+					id: crypto.randomUUID(),
+					archivePath: selectedArchive,
+					outputDir: "",
+					status: "failed" as const,
+					error: errorMsg,
+				});
 			}
-
-			// Check if archive is too large (basic check - actual disk space check would need native API)
-			const estimatedSize = archiveInfo.uncompressed_estimate || 0;
-			const sizeLimitBytes =
-				settings.sizeLimitGB > 0
-					? settings.sizeLimitGB * 1024 * 1024 * 1024
-					: Infinity;
-
-			if (estimatedSize > sizeLimitBytes) {
-				showError(
-					`Archive size (${formatBytes(estimatedSize)}) exceeds the configured limit (${settings.sizeLimitGB} GB)`,
-				);
-				return;
-			}
-
-			// Warn if archive is very large
-			if (estimatedSize > 10 * 1024 * 1024 * 1024) {
-				// > 10 GB
-				showWarning(
-					`Large archive detected (${formatBytes(estimatedSize)}). Extraction may take a while.`,
-				);
-			}
-
-			// Get unique output path with conflict resolution
-			const outputDir = await getUniqueOutputPath(selectedArchive);
-
-			// Start extraction with automatic output path
-			const jobId = await extractArchives(
-				[selectedArchive],
-				outputDir,
-				settings,
-			);
-
-			// Create queue item with the actual job ID
-			const queueItem = {
-				id: jobId,
-				archivePath: selectedArchive,
-				outputDir,
-				status: "pending" as const,
-			};
-
-			// Add to queue
-			addToQueue(queueItem);
-
-			showSuccess(`Extraction started: ${outputDir.split("/").pop()}`);
-		} catch (error) {
-			console.error("Failed to start extraction:", error);
-			const errorMsg = error instanceof Error ? error.message : "Unknown error";
-
-			// Show user-friendly error message
-			if (
-				errorMsg.includes("Permission denied") ||
-				errorMsg.includes("permission")
-			) {
-				showError("Permission denied: Cannot create output directory");
-			} else if (
-				errorMsg.includes("disk space") ||
-				errorMsg.includes("space")
-			) {
-				showError("Insufficient disk space for extraction");
-			} else if (errorMsg.includes("not found")) {
-				showError("Archive file not found");
-			} else {
-				showError(`Failed to start extraction: ${errorMsg}`);
-			}
-
-			// Add failed item to queue
-			addToQueue({
-				id: crypto.randomUUID(),
-				archivePath: selectedArchive,
-				outputDir: "",
-				status: "failed" as const,
-				error: errorMsg,
-			});
-		}
-	}, [selectedArchive, settings, formatBytes]);
+		},
+		[selectedArchive, settings, formatBytes],
+	);
 
 	// Global keyboard shortcuts
 	useEffect(() => {
