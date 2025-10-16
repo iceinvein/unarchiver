@@ -143,6 +143,63 @@ export default function FileExplorer({
 		};
 
 		loadDirectory();
+
+		// Auto-refresh: Poll for changes every 3 seconds
+		const refreshInterval = setInterval(async () => {
+			try {
+				const entries = await listDirectory(currentPath);
+				const visibleEntries = entries.filter(
+					(entry) =>
+						!entry.name.startsWith(".") &&
+						(entry.isDirectory || entry.isArchive),
+				);
+
+				// Check if the directory contents have changed
+				setTree((prevTree) => {
+					// Compare entry counts and names
+					if (prevTree.length !== visibleEntries.length) {
+						// Directory changed, update tree
+						return visibleEntries.map((entry) => ({
+							entry,
+							isExpanded: false,
+							children: [],
+							isLoading: false,
+						}));
+					}
+
+					// Check if any entries are different
+					const hasChanges = visibleEntries.some((newEntry, index) => {
+						const oldEntry = prevTree[index]?.entry;
+						return (
+							!oldEntry ||
+							oldEntry.name !== newEntry.name ||
+							oldEntry.modifiedAt !== newEntry.modifiedAt ||
+							oldEntry.size !== newEntry.size
+						);
+					});
+
+					if (hasChanges) {
+						// Directory changed, update tree
+						return visibleEntries.map((entry) => ({
+							entry,
+							isExpanded: false,
+							children: [],
+							isLoading: false,
+						}));
+					}
+
+					// No changes, keep existing tree
+					return prevTree;
+				});
+			} catch (err) {
+				// Silently fail on refresh errors to avoid spamming the user
+				console.error("Failed to refresh directory:", err);
+			}
+		}, 3000); // Refresh every 3 seconds
+
+		return () => {
+			clearInterval(refreshInterval);
+		};
 	}, [currentPath, navigateUp]);
 
 	const loadChildren = useCallback(
