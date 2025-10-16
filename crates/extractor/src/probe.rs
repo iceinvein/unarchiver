@@ -208,7 +208,9 @@ fn list_rar_entries(
 ) -> std::result::Result<(Vec<ArchiveEntry>, bool), Box<dyn std::error::Error>> {
     use unrar::Archive;
 
-    let archive = Archive::new(path).open_for_listing()?;
+    // For multi-part archives, use as_first_part() which returns an Archive pointing to the first part
+    // If it's not a multi-part archive, as_first_part() returns self
+    let archive = Archive::new(path).as_first_part().open_for_listing()?;
     let mut entries = Vec::new();
     let mut encrypted = false;
     let mut current = Some(archive);
@@ -278,6 +280,34 @@ fn detect_format(path: &Path) -> std::result::Result<String, ExtractError> {
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_lowercase();
+
+    // Check for multi-part archive extensions
+    let filename = path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    // Handle multi-part RAR archives (.part1.rar, .part01.rar, .r00, .r01, etc.)
+    if filename.contains(".part") && filename.ends_with(".rar") {
+        return Ok("RAR".to_string());
+    }
+    if extension.starts_with('r') && extension.len() >= 2 {
+        // Check if it's .r00, .r01, etc.
+        if extension[1..].chars().all(|c| c.is_ascii_digit()) {
+            return Ok("RAR".to_string());
+        }
+    }
+
+    // Handle multi-part 7z archives (.7z.001, .7z.002, etc.)
+    if filename.contains(".7z.") && extension.chars().all(|c| c.is_ascii_digit()) {
+        return Ok("7Z".to_string());
+    }
+
+    // Handle multi-part ZIP archives (.zip.001, .zip.002, etc.)
+    if filename.contains(".zip.") && extension.chars().all(|c| c.is_ascii_digit()) {
+        return Ok("ZIP".to_string());
+    }
 
     // Map extensions to format names
     let format = match extension.as_str() {

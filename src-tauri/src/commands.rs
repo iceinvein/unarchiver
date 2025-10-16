@@ -513,8 +513,47 @@ fn is_archive_file(path: &Path) -> bool {
         "lzma", "z", "cpio", "rpm", "deb", "dmg",
     ];
 
+    let filename = path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    // Check for multi-part archives
+    // RAR: .part1.rar, .part01.rar, .r00, .r01, etc.
+    if filename.contains(".part") && filename.ends_with(".rar") {
+        return true;
+    }
+
+    // 7z: .7z.001, .7z.002, etc.
+    if filename.contains(".7z.") {
+        if let Some(ext) = path.extension() {
+            if ext.to_string_lossy().chars().all(|c| c.is_ascii_digit()) {
+                return true;
+            }
+        }
+    }
+
+    // ZIP: .zip.001, .zip.002, etc.
+    if filename.contains(".zip.") {
+        if let Some(ext) = path.extension() {
+            if ext.to_string_lossy().chars().all(|c| c.is_ascii_digit()) {
+                return true;
+            }
+        }
+    }
+
+    // Check standard extensions
     if let Some(ext) = path.extension() {
         let ext_lower = ext.to_string_lossy().to_lowercase();
+
+        // Check for .rXX extensions (RAR multi-part)
+        if ext_lower.starts_with('r') && ext_lower.len() >= 2 {
+            if ext_lower[1..].chars().all(|c| c.is_ascii_digit()) {
+                return true;
+            }
+        }
+
         ARCHIVE_EXTENSIONS.contains(&ext_lower.as_str())
     } else {
         false
