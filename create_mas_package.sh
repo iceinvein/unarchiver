@@ -6,11 +6,12 @@
 set -e
 
 APP_NAME="Unarchiver"
-APP_PATH="src-tauri/target/release/bundle/macos/${APP_NAME}.app"
+APP_PATH="target/release/bundle/macos/${APP_NAME}.app"
 PKG_NAME="${APP_NAME}.pkg"
 
 # Replace with your actual installer certificate identity
-INSTALLER_IDENTITY="Developer ID Installer: Dik Rana (UT6J7B9B3Z)"
+# For Mac App Store, use "3rd Party Mac Developer Installer"
+INSTALLER_IDENTITY="3rd Party Mac Developer Installer: Dik Rana (UT6J7B9B3Z)"
 
 echo "📦 Creating Mac App Store package..."
 echo ""

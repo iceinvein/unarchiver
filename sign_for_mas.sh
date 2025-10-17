@@ -7,14 +7,16 @@ set -e
 
 # Configuration
 APP_NAME="Unarchiver"
-APP_PATH="src-tauri/target/release/bundle/macos/${APP_NAME}.app"
+APP_PATH="target/release/bundle/macos/${APP_NAME}.app"
 ENTITLEMENTS="src-tauri/entitlements.mas.plist"
 CHILD_ENTITLEMENTS="src-tauri/entitlements.mas.inherit.plist"
+PROVISIONING_PROFILE="Unarchiver.provisionprofile"
 
 # You need to replace these with your actual certificate identities
 # Find them with: security find-identity -v -p codesigning
-INSTALLER_IDENTITY="Developer ID Installer: Dik Rana (UT6J7B9B3Z)"
-APP_IDENTITY="Developer ID Application: Dik Rana (UT6J7B9B3Z)"
+# For Mac App Store, use "3rd Party Mac Developer" certificates
+INSTALLER_IDENTITY="3rd Party Mac Developer Installer: Dik Rana (UT6J7B9B3Z)"
+APP_IDENTITY="Apple Distribution: Dik Rana (UT6J7B9B3Z)"
 
 echo "🔐 Signing ${APP_NAME} for Mac App Store..."
 echo ""
@@ -34,7 +36,6 @@ find "$APP_PATH/Contents/Frameworks" -type d -name "*.framework" -o -name "*.dyl
     echo "  Signing: $framework"
     codesign --force --sign "$APP_IDENTITY" \
         --entitlements "$CHILD_ENTITLEMENTS" \
-        --options runtime \
         --timestamp \
         "$framework" 2>/dev/null || true
 done
@@ -45,10 +46,36 @@ if [ -d "$APP_PATH/Contents/XPCServices" ]; then
         echo "  Signing XPC: $xpc"
         codesign --force --sign "$APP_IDENTITY" \
             --entitlements "$CHILD_ENTITLEMENTS" \
-            --options runtime \
             --timestamp \
             "$xpc"
     done
+fi
+
+# Sign all helper executables in MacOS folder
+echo ""
+echo "🔧 Signing helper executables..."
+find "$APP_PATH/Contents/MacOS" -type f -perm +111 | while read executable; do
+    # Skip the main app executable (we'll sign it separately)
+    if [ "$(basename "$executable")" != "$APP_NAME" ]; then
+        helper_name=$(basename "$executable")
+        echo "  Signing helper: $helper_name"
+        codesign --force --sign "$APP_IDENTITY" \
+            --entitlements "$CHILD_ENTITLEMENTS" \
+            --identifier "com.dikrana.unarchiver.$helper_name" \
+            --timestamp \
+            "$executable"
+    fi
+done
+
+# Embed provisioning profile
+echo ""
+echo "📄 Embedding provisioning profile..."
+if [ -f "$PROVISIONING_PROFILE" ]; then
+    cp "$PROVISIONING_PROFILE" "$APP_PATH/Contents/embedded.provisionprofile"
+    echo "  ✓ Provisioning profile embedded"
+else
+    echo "  ⚠️  Warning: Provisioning profile not found at $PROVISIONING_PROFILE"
+    echo "  Download it from https://developer.apple.com/account/resources/profiles/list"
 fi
 
 # Sign the main executable
@@ -56,7 +83,7 @@ echo ""
 echo "🎯 Signing main application..."
 codesign --force --sign "$APP_IDENTITY" \
     --entitlements "$ENTITLEMENTS" \
-    --options runtime \
+    --identifier "com.dikrana.unarchiver" \
     --timestamp \
     "$APP_PATH"
 
@@ -64,6 +91,10 @@ codesign --force --sign "$APP_IDENTITY" \
 echo ""
 echo "✅ Verifying signature..."
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+echo ""
+echo "📋 Signature details:"
+codesign -d -vvv --entitlements - "$APP_PATH" 2>&1 | grep -E "(Identifier|TeamIdentifier)"
 
 echo ""
 echo "✅ App signed successfully!"
