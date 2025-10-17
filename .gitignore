@@ -29,3 +29,8 @@ coverage
 target
 
 *.tsbuildinfo
+*.pkg
+
+# Fastlane
+fastlane
+.env
