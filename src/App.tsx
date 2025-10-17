@@ -160,58 +160,36 @@ function App() {
 				},
 			);
 
-			// Files opened from Finder (double-click or drag to app icon)
+			// Files opened from Finder (drag-and-drop to app window or icon)
 			unlistenFilesOpened = await onFilesOpened(async (paths: string[]) => {
+				console.log("files_opened event received with paths:", paths);
+
 				// Import dynamically to avoid circular dependencies
-				const { probeArchive, extractArchives, getUniqueOutputPath } =
-					await import("./lib/api");
-				const { settingsAtom, addToQueue } = await import("./lib/store");
+				const { currentDirectoryAtom, selectedArchiveAtom } = await import(
+					"./lib/store"
+				);
 
-				// Get current settings
-				const settings = settingsAtom.get();
+				// Process the first archive (if multiple files are opened, just handle the first one)
+				if (paths.length > 0) {
+					const archivePath = paths[0];
+					console.log("Processing archive:", archivePath);
 
-				// Process each archive
-				for (const path of paths) {
-					try {
-						// Probe the archive to get metadata
-						await probeArchive(path);
+					// Get the directory containing the archive
+					const directory = archivePath.substring(
+						0,
+						archivePath.lastIndexOf("/"),
+					);
+					console.log("Navigating to directory:", directory);
 
-						// Get unique output path with conflict resolution
-						const outputDir = await getUniqueOutputPath(path);
+					// Navigate to the directory
+					currentDirectoryAtom.set(directory);
 
-						// Start extraction
-						const jobId = await extractArchives([path], outputDir, settings);
+					// Select the archive (this will show it in the preview)
+					selectedArchiveAtom.set(archivePath);
+					console.log("Archive selected:", archivePath);
 
-						// Create queue item with the actual job ID
-						const queueItem = {
-							id: jobId,
-							archivePath: path,
-							outputDir,
-							status: "pending" as const,
-						};
-
-						// Add to queue
-						addToQueue(queueItem);
-
-						const archiveName = path.split("/").pop() || "Archive";
-						showSuccess(`Started extracting: ${archiveName}`);
-					} catch (error) {
-						console.error(`Failed to process ${path}:`, error);
-						const errorMsg =
-							error instanceof Error ? error.message : "Unknown error";
-						const archiveName = path.split("/").pop() || "Archive";
-
-						showError(`Failed to process ${archiveName}: ${errorMsg}`);
-
-						// Add failed item to queue
-						addToQueue({
-							id: crypto.randomUUID(),
-							archivePath: path,
-							outputDir: "",
-							status: "failed" as const,
-							error: errorMsg,
-						});
-					}
+					const archiveName = archivePath.split("/").pop() || "Archive";
+					showSuccess(`Opened: ${archiveName}`);
 				}
 			});
 		};

@@ -177,5 +177,3 @@ export async function getUniqueOutputPath(
 ): Promise<string> {
 	return await invoke<string>("get_unique_output_path", { archivePath });
 }
-
-
