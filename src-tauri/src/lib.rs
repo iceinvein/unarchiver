@@ -34,7 +34,7 @@ pub fn run() {
             // When a file is opened with the app, macOS launches a new instance
             // This plugin prevents that and instead sends the args to the existing instance
             let archive_extensions = [
-                "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz2", "txz", "iso",
+                "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz2", "txz",
             ];
 
             let archive_paths: Vec<String> = args
@@ -73,6 +73,8 @@ pub fn run() {
             commands::provide_password,
             commands::list_directory,
             commands::get_home_directory,
+            commands::get_accessible_directories,
+            commands::request_folder_access,
             commands::check_path_exists,
             commands::get_unique_output_path,
             commands::save_settings,
@@ -87,7 +89,7 @@ pub fn run() {
                 eprintln!("Flushing {} pending file opens", pending.len());
 
                 let archive_extensions = [
-                    "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz2", "txz", "iso",
+                    "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz2", "txz",
                 ];
 
                 let archive_paths: Vec<String> = pending
@@ -135,7 +137,6 @@ pub fn run() {
 
                         let archive_extensions = [
                             "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz2", "txz",
-                            "iso",
                         ];
 
                         let archive_paths: Vec<String> = urls
@@ -196,7 +197,7 @@ pub fn run() {
 
                 // Filter for supported archive extensions
                 let archive_extensions = [
-                    "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz2", "txz", "iso",
+                    "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz2", "txz",
                 ];
 
                 let archive_paths: Vec<String> = paths
@@ -225,7 +226,7 @@ pub fn run() {
                     eprintln!("RunEvent::Opened received with URLs: {:?}", urls);
 
                     let archive_extensions = [
-                        "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz2", "txz", "iso",
+                        "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz2", "txz",
                     ];
 
                     // Convert URLs to file paths

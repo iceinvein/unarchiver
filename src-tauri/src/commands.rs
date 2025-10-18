@@ -303,7 +303,7 @@ pub async fn probe(path: String) -> Result<extractor::ArchiveInfo, String> {
                 "Archive file not found. Please check the file path.".to_string()
             }
             extractor::ExtractError::UnsupportedFormat(fmt) => {
-                format!("Unsupported archive format: {}. Supported formats include ZIP, TAR, 7Z, RAR, and ISO.", fmt)
+                format!("Unsupported archive format: {}. Supported formats include ZIP, TAR, 7Z, and RAR.", fmt)
             }
             extractor::ExtractError::Corrupted(msg) => {
                 format!("Archive appears to be corrupted: {}", msg)
@@ -395,7 +395,7 @@ pub async fn list_directory(path: String) -> Result<Vec<FileSystemEntry>, String
 
         // Check if path exists and is a directory
         if !dir_path.exists() {
-            return Err(format!("Path does not exist: {}", path));
+            return Err(format!("PERMISSION_DENIED: Path does not exist or access denied: {}", path));
         }
 
         if !dir_path.is_dir() {
@@ -403,15 +403,32 @@ pub async fn list_directory(path: String) -> Result<Vec<FileSystemEntry>, String
         }
 
         // Read directory entries
-        let read_dir =
-            std::fs::read_dir(&dir_path).map_err(|e| format!("Failed to read directory: {}", e))?;
+        let read_dir = std::fs::read_dir(&dir_path).map_err(|e| {
+            // Check if it's a permission error
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                format!("PERMISSION_DENIED: Access denied to directory: {}", path)
+            } else {
+                format!("Failed to read directory: {}", e)
+            }
+        })?;
 
         for entry_result in read_dir {
-            let entry = entry_result.map_err(|e| format!("Failed to read entry: {}", e))?;
+            let entry = match entry_result {
+                Ok(e) => e,
+                Err(e) => {
+                    eprintln!("Skipping entry due to error: {}", e);
+                    continue;
+                }
+            };
+
             let entry_path = entry.path();
-            let metadata = entry
-                .metadata()
-                .map_err(|e| format!("Failed to read metadata: {}", e))?;
+            let metadata = match entry.metadata() {
+                Ok(m) => m,
+                Err(e) => {
+                    eprintln!("Skipping {} due to metadata error: {}", entry_path.display(), e);
+                    continue;
+                }
+            };
 
             let name = entry.file_name().to_string_lossy().to_string();
 
@@ -466,6 +483,57 @@ pub async fn get_home_directory() -> Result<String, String> {
     dirs::home_dir()
         .ok_or_else(|| "Failed to get home directory".to_string())
         .map(|path| path.to_string_lossy().to_string())
+}
+
+/// Get accessible default directories (works in sandbox)
+/// Note: In a sandboxed environment, these paths may not be accessible
+/// until the user grants permission via the file picker
+#[tauri::command]
+pub async fn get_accessible_directories() -> Result<Vec<FileSystemEntry>, String> {
+    let mut accessible = Vec::new();
+
+    // Return directory paths without trying to access them
+    // This avoids triggering permission prompts
+    let dirs_to_check = vec![
+        ("Downloads", dirs::download_dir()),
+        ("Documents", dirs::document_dir()),
+        ("Desktop", dirs::desktop_dir()),
+    ];
+
+    for (name, dir_option) in dirs_to_check {
+        if let Some(dir_path) = dir_option {
+            let path_str = dir_path.to_string_lossy().to_string();
+            
+            accessible.push(FileSystemEntry {
+                name: name.to_string(),
+                path: path_str,
+                is_directory: true,
+                is_archive: false,
+                size: None,
+                modified_at: None,
+            });
+        }
+    }
+
+    Ok(accessible)
+}
+
+/// Request folder access permission using native file picker
+#[tauri::command]
+pub async fn request_folder_access(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    // Open folder picker directly - no need for explanation dialog
+    // The system will handle permission prompts
+    let folder = app.dialog().file().blocking_pick_folder();
+
+    if let Some(folder_path) = folder {
+        // Convert FilePath to string
+        let path_str = folder_path.to_string();
+        Ok(Some(path_str))
+    } else {
+        Ok(None)
+    }
 }
 
 /// Check if a path exists
@@ -597,8 +665,7 @@ pub async fn load_settings(app: AppHandle) -> Result<SettingsData, String> {
 /// Helper function to check if a file is an archive based on extension
 fn is_archive_file(path: &Path) -> bool {
     const ARCHIVE_EXTENSIONS: &[&str] = &[
-        "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz2", "txz", "iso", "cab", "lz",
-        "lzma", "z", "cpio", "rpm", "deb", "dmg",
+        "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "tgz", "tbz2", "txz",
     ];
 
     let filename = path
