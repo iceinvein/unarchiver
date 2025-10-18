@@ -12,7 +12,6 @@
 //! - TAR (with gzip, bzip2, xz compression)
 //! - 7-Zip
 //! - RAR (read-only)
-//! - ISO
 //!
 //! ## Example
 //!

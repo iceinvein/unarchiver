@@ -1,11 +1,14 @@
 //! Archive extraction implementation with security features.
 
 use crate::error::ExtractError;
-use crate::safety::{check_size_limits, validate_entry_path};
+use crate::safety::validate_entry_path;
 use crate::types::{ExtractOptions, ExtractStats, OverwriteMode};
 use crate::ProgressCallback;
+use bzip2::read::BzDecoder;
+use flate2::read::GzDecoder;
+use lzma_rs::xz_decompress;
 use std::fs::{self, File};
-use std::io;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -76,27 +79,54 @@ pub fn extract_archive(
         ));
     }
 
+    // Detect format
+    let format = crate::probe::detect_format(&actual_archive_path)?;
+    
     // Use appropriate extraction method based on archive type
-    let result = if is_rar_archive(archive_path) {
-        // Use unrar library for RAR archives (supports multi-part)
-        extract_rar_archive(
+    let result = match format.as_str() {
+        "ZIP" => extract_zip_archive(
             &actual_archive_path,
             output_dir,
             options,
             progress_cb,
             cancel_flag.clone(),
             &mut stats,
-        )
-    } else {
-        // Use compress-tools for other formats
-        extract_with_compress_tools(
+        ),
+        "TAR" | "TAR.GZ" | "TAR.BZ2" | "TAR.XZ" => extract_tar_archive(
             &actual_archive_path,
             output_dir,
             options,
             progress_cb,
             cancel_flag.clone(),
             &mut stats,
-        )
+            &format,
+        ),
+        "GZIP" | "BZIP2" | "XZ" => extract_compressed_file(
+            &actual_archive_path,
+            output_dir,
+            options,
+            progress_cb,
+            cancel_flag.clone(),
+            &mut stats,
+            &format,
+        ),
+        "7Z" => extract_7z_archive(
+            &actual_archive_path,
+            output_dir,
+            options,
+            progress_cb,
+            cancel_flag.clone(),
+            &mut stats,
+        ),
+        "RAR" => extract_rar_archive(
+            &actual_archive_path,
+            output_dir,
+            options,
+            progress_cb,
+            cancel_flag.clone(),
+            &mut stats,
+        ),
+        _ => Err(ExtractError::UnsupportedFormat(format)),
     };
 
     // Check if cancelled
@@ -113,12 +143,8 @@ pub fn extract_archive(
     Ok(stats)
 }
 
-/// Extract using compress-tools library with custom validation.
-///
-/// Note: Password support is limited by the compress-tools library.
-/// The function will detect password-protected archives and return appropriate errors,
-/// but actual password-based decryption may not work for all formats.
-fn extract_with_compress_tools(
+/// Extract ZIP archive using zip crate.
+fn extract_zip_archive(
     archive_path: &Path,
     output_dir: &Path,
     options: &ExtractOptions,
@@ -126,120 +152,393 @@ fn extract_with_compress_tools(
     cancel_flag: Arc<AtomicBool>,
     stats: &mut ExtractStats,
 ) -> Result<(), ExtractError> {
-    // First, list all entries to validate them
-    let archive_file = File::open(archive_path)?;
-    let entries = compress_tools::list_archive_files(archive_file)
-        .map_err(|e| map_compress_tools_error(e, options))?;
+    let file = File::open(archive_path)?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| {
+        if e.to_string().contains("password") || e.to_string().contains("encrypted") {
+            if options.password.is_some() {
+                ExtractError::InvalidPassword
+            } else {
+                ExtractError::PasswordRequired
+            }
+        } else {
+            ExtractError::Corrupted(e.to_string())
+        }
+    })?;
 
-    // Validate all paths before extraction
-    let mut validated_entries = Vec::new();
-    for entry_path_str in entries {
+    for i in 0..archive.len() {
         // Check cancellation
         if cancel_flag.load(Ordering::Relaxed) {
             return Err(ExtractError::Cancelled);
         }
 
-        let entry_path = Path::new(&entry_path_str);
-
-        // Validate the entry path
-        let validated_path = match validate_entry_path(entry_path) {
-            Ok(p) => p,
-            Err(_) => {
-                // Skip invalid paths but continue extraction
-                continue;
+        let mut file = match archive.by_index(i) {
+            Ok(f) => f,
+            Err(e) => {
+                let err_str = e.to_string();
+                if err_str.contains("password") || err_str.contains("encrypted") {
+                    if options.password.is_some() {
+                        return Err(ExtractError::InvalidPassword);
+                    } else {
+                        return Err(ExtractError::PasswordRequired);
+                    }
+                }
+                return Err(ExtractError::Corrupted(err_str));
             }
         };
 
-        // Apply strip_components
+        let entry_path = file.enclosed_name().ok_or_else(|| {
+            ExtractError::Security(crate::error::SecurityError::PathTraversal(file.name().to_string()))
+        })?;
+
+        // Validate and strip path components
+        let validated_path = validate_entry_path(&entry_path)?;
         let final_path = strip_path_components(&validated_path, options.strip_components);
 
-        // Skip if path becomes empty after stripping
         if final_path.as_os_str().is_empty() {
             continue;
         }
 
-        validated_entries.push((entry_path_str, final_path));
+        let output_path = output_dir.join(&final_path);
+
+        if file.is_dir() {
+            fs::create_dir_all(&output_path)?;
+        } else {
+            // Create parent directories
+            if let Some(parent) = output_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            // Check size limits
+            let file_size = file.size();
+            let new_total = stats.bytes_written + file_size;
+            if let Some(limit) = options.size_limit_bytes {
+                if new_total > limit {
+                    return Err(ExtractError::SizeLimitExceeded {
+                        current: new_total,
+                        limit,
+                    });
+                }
+            }
+
+            // Handle overwrite mode
+            let actual_output_path = handle_overwrite_mode(&output_path, options.overwrite)?;
+
+            if options.overwrite == OverwriteMode::Skip && actual_output_path.exists() {
+                continue;
+            }
+
+            // Extract file
+            let mut outfile = File::create(&actual_output_path)?;
+            io::copy(&mut file, &mut outfile)?;
+
+            // Update stats
+            stats.bytes_written += file_size;
+            stats.files_extracted += 1;
+
+            // Progress callback
+            let continue_extraction = progress_cb(
+                &final_path.to_string_lossy(),
+                stats.bytes_written,
+                Some(file_size),
+            );
+
+            if !continue_extraction {
+                return Err(ExtractError::Cancelled);
+            }
+        }
     }
 
-    // Now extract to a temporary location and move files with validation
-    let temp_dir = tempfile::tempdir().map_err(|e| ExtractError::Io(e))?;
+    Ok(())
+}
 
-    // Extract entire archive to temp directory
-    // Note: compress-tools doesn't support password parameter directly
-    // Password handling would require using libarchive bindings directly
-    let archive_file = File::open(archive_path)?;
-    compress_tools::uncompress_archive(
-        archive_file,
-        temp_dir.path(),
-        compress_tools::Ownership::Preserve,
-    )
-    .map_err(|e| map_compress_tools_error(e, options))?;
+/// Extract a single compressed file (gz, bz2, xz) - not a tar archive.
+fn extract_compressed_file(
+    archive_path: &Path,
+    output_dir: &Path,
+    options: &ExtractOptions,
+    progress_cb: &ProgressCallback,
+    cancel_flag: Arc<AtomicBool>,
+    stats: &mut ExtractStats,
+    format: &str,
+) -> Result<(), ExtractError> {
+    // Check cancellation
+    if cancel_flag.load(Ordering::Relaxed) {
+        return Err(ExtractError::Cancelled);
+    }
 
-    // Move validated files from temp to output directory
-    for (original_path, final_path) in validated_entries {
+    let file = File::open(archive_path)?;
+    
+    // Determine output filename by removing the compression extension
+    let output_filename = archive_path
+        .file_stem()
+        .ok_or_else(|| ExtractError::Corrupted("Invalid filename".to_string()))?;
+    
+    let output_path = output_dir.join(output_filename);
+    
+    // Handle overwrite mode
+    let actual_output_path = handle_overwrite_mode(&output_path, options.overwrite)?;
+    
+    if options.overwrite == OverwriteMode::Skip && actual_output_path.exists() {
+        return Ok(());
+    }
+    
+    // Create parent directories
+    if let Some(parent) = actual_output_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    
+    // Decompress based on format
+    let mut reader: Box<dyn Read> = match format {
+        "GZIP" => Box::new(GzDecoder::new(file)),
+        "BZIP2" => Box::new(BzDecoder::new(file)),
+        "XZ" => {
+            // lzma-rs requires decompressing to memory first
+            let mut compressed = Vec::new();
+            let mut file = file;
+            file.read_to_end(&mut compressed)?;
+            let mut decompressed = Vec::new();
+            xz_decompress(&mut compressed.as_slice(), &mut decompressed)
+                .map_err(|e| ExtractError::Corrupted(format!("XZ decompression failed: {}", e)))?;
+            Box::new(std::io::Cursor::new(decompressed))
+        }
+        _ => return Err(ExtractError::UnsupportedFormat(format.to_string())),
+    };
+    
+    // Write decompressed data to output file
+    let mut outfile = File::create(&actual_output_path)?;
+    let bytes_written = io::copy(&mut reader, &mut outfile)?;
+    
+    // Check size limits
+    if let Some(limit) = options.size_limit_bytes {
+        if bytes_written > limit {
+            // Clean up the file we just created
+            let _ = fs::remove_file(&actual_output_path);
+            return Err(ExtractError::SizeLimitExceeded {
+                current: bytes_written,
+                limit,
+            });
+        }
+    }
+    
+    // Update stats
+    stats.bytes_written = bytes_written;
+    stats.files_extracted = 1;
+    
+    // Progress callback
+    let continue_extraction = progress_cb(
+        &output_filename.to_string_lossy(),
+        bytes_written,
+        Some(bytes_written),
+    );
+    
+    if !continue_extraction {
+        return Err(ExtractError::Cancelled);
+    }
+    
+    Ok(())
+}
+
+/// Extract TAR archive (with optional compression) using tar crate.
+fn extract_tar_archive(
+    archive_path: &Path,
+    output_dir: &Path,
+    options: &ExtractOptions,
+    progress_cb: &ProgressCallback,
+    cancel_flag: Arc<AtomicBool>,
+    stats: &mut ExtractStats,
+    format: &str,
+) -> Result<(), ExtractError> {
+    let file = File::open(archive_path)?;
+
+    // Create appropriate decompressor based on format
+    let reader: Box<dyn Read> = match format {
+        "TAR.GZ" => Box::new(GzDecoder::new(file)),
+        "TAR.BZ2" => Box::new(BzDecoder::new(file)),
+        "TAR.XZ" => {
+            // lzma-rs requires decompressing to memory first
+            let mut compressed = Vec::new();
+            let mut file = file;
+            file.read_to_end(&mut compressed)?;
+            let mut decompressed = Vec::new();
+            xz_decompress(&mut compressed.as_slice(), &mut decompressed)
+                .map_err(|e| ExtractError::Corrupted(format!("XZ decompression failed: {}", e)))?;
+            Box::new(std::io::Cursor::new(decompressed))
+        }
+        _ => Box::new(file),
+    };
+
+    let mut archive = tar::Archive::new(reader);
+
+    for entry_result in archive.entries()? {
         // Check cancellation
         if cancel_flag.load(Ordering::Relaxed) {
             return Err(ExtractError::Cancelled);
         }
 
-        let temp_file_path = temp_dir.path().join(&original_path);
+        let mut entry = entry_result?;
+        let entry_path = entry.path()?.to_path_buf();
 
-        // Skip if file doesn't exist (might be a directory)
-        if !temp_file_path.exists() {
+        // Validate and strip path components
+        let validated_path = validate_entry_path(&entry_path)?;
+        let final_path = strip_path_components(&validated_path, options.strip_components);
+
+        if final_path.as_os_str().is_empty() {
             continue;
         }
 
-        // Skip directories
-        if temp_file_path.is_dir() {
-            // Create the directory in output
-            let output_path = output_dir.join(&final_path);
+        let output_path = output_dir.join(&final_path);
+
+        if entry.header().entry_type().is_dir() {
             fs::create_dir_all(&output_path)?;
-            continue;
+        } else {
+            // Create parent directories
+            if let Some(parent) = output_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            // Check size limits
+            let file_size = entry.header().size()?;
+            let new_total = stats.bytes_written + file_size;
+            if let Some(limit) = options.size_limit_bytes {
+                if new_total > limit {
+                    return Err(ExtractError::SizeLimitExceeded {
+                        current: new_total,
+                        limit,
+                    });
+                }
+            }
+
+            // Handle overwrite mode
+            let actual_output_path = handle_overwrite_mode(&output_path, options.overwrite)?;
+
+            if options.overwrite == OverwriteMode::Skip && actual_output_path.exists() {
+                continue;
+            }
+
+            // Extract file
+            let mut outfile = File::create(&actual_output_path)?;
+            io::copy(&mut entry, &mut outfile)?;
+
+            // Update stats
+            stats.bytes_written += file_size;
+            stats.files_extracted += 1;
+
+            // Progress callback
+            let continue_extraction = progress_cb(
+                &final_path.to_string_lossy(),
+                stats.bytes_written,
+                Some(file_size),
+            );
+
+            if !continue_extraction {
+                return Err(ExtractError::Cancelled);
+            }
         }
+    }
 
-        // Get file size
-        let file_size = temp_file_path.metadata()?.len();
+    Ok(())
+}
 
-        // Check size limits
-        let new_total = stats.bytes_written + file_size;
-        check_size_limits(new_total, options.size_limit_bytes).map_err(|_| {
-            ExtractError::SizeLimitExceeded {
-                current: new_total,
-                limit: options.size_limit_bytes.unwrap_or(0),
+/// Extract 7Z archive using sevenz-rust2 crate.
+fn extract_7z_archive(
+    archive_path: &Path,
+    output_dir: &Path,
+    options: &ExtractOptions,
+    progress_cb: &ProgressCallback,
+    cancel_flag: Arc<AtomicBool>,
+    stats: &mut ExtractStats,
+) -> Result<(), ExtractError> {
+    // sevenz-rust2 extracts directly to output directory
+    // We need to validate paths after extraction
+    let temp_dir = tempfile::tempdir()?;
+    
+    // Extract to temp directory first
+    sevenz_rust2::decompress_file(archive_path, temp_dir.path())
+        .map_err(|e| {
+            let err_msg = e.to_string();
+            if err_msg.contains("password") || err_msg.contains("encrypted") {
+                if options.password.is_some() {
+                    ExtractError::InvalidPassword
+                } else {
+                    ExtractError::PasswordRequired
+                }
+            } else {
+                ExtractError::Corrupted(err_msg)
             }
         })?;
 
-        // Determine output path with overwrite handling
-        let output_path = output_dir.join(&final_path);
-
-        // Create parent directories
-        if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent)?;
+    // Walk through extracted files and move them with validation
+    for entry in walkdir::WalkDir::new(temp_dir.path()) {
+        // Check cancellation
+        if cancel_flag.load(Ordering::Relaxed) {
+            return Err(ExtractError::Cancelled);
         }
 
-        let actual_output_path = handle_overwrite_mode(&output_path, options.overwrite)?;
+        let entry = entry.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let temp_path = entry.path();
+        
+        // Get relative path from temp dir
+        let relative_path = temp_path.strip_prefix(temp_dir.path())
+            .map_err(|_| ExtractError::Security(crate::error::SecurityError::PathTraversal(temp_path.display().to_string())))?;
 
-        // Skip if file exists and mode is Skip
-        if options.overwrite == OverwriteMode::Skip && actual_output_path.exists() {
+        if relative_path.as_os_str().is_empty() {
             continue;
         }
 
-        // Copy file from temp to output
-        fs::copy(&temp_file_path, &actual_output_path)?;
+        // Validate and strip path components
+        let validated_path = validate_entry_path(relative_path)?;
+        let final_path = strip_path_components(&validated_path, options.strip_components);
 
-        // Update statistics
-        stats.bytes_written += file_size;
-        stats.files_extracted += 1;
+        if final_path.as_os_str().is_empty() {
+            continue;
+        }
 
-        // Call progress callback
-        let continue_extraction = progress_cb(
-            &final_path.to_string_lossy(),
-            stats.bytes_written,
-            Some(file_size),
-        );
+        let output_path = output_dir.join(&final_path);
 
-        if !continue_extraction {
-            return Err(ExtractError::Cancelled);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&output_path)?;
+        } else {
+            // Create parent directories
+            if let Some(parent) = output_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            // Check size limits
+            let file_size = entry.metadata().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?.len();
+            let new_total = stats.bytes_written + file_size;
+            if let Some(limit) = options.size_limit_bytes {
+                if new_total > limit {
+                    return Err(ExtractError::SizeLimitExceeded {
+                        current: new_total,
+                        limit,
+                    });
+                }
+            }
+
+            // Handle overwrite mode
+            let actual_output_path = handle_overwrite_mode(&output_path, options.overwrite)?;
+
+            if options.overwrite == OverwriteMode::Skip && actual_output_path.exists() {
+                continue;
+            }
+
+            // Copy file
+            fs::copy(temp_path, &actual_output_path)?;
+
+            // Update stats
+            stats.bytes_written += file_size;
+            stats.files_extracted += 1;
+
+            // Progress callback
+            let continue_extraction = progress_cb(
+                &final_path.to_string_lossy(),
+                stats.bytes_written,
+                Some(file_size),
+            );
+
+            if !continue_extraction {
+                return Err(ExtractError::Cancelled);
+            }
         }
     }
 
@@ -379,44 +678,6 @@ fn extract_rar_archive(
     }
 
     Ok(())
-}
-
-/// Map compress-tools errors to ExtractError with password detection.
-fn map_compress_tools_error(e: compress_tools::Error, options: &ExtractOptions) -> ExtractError {
-    let err_msg = e.to_string().to_lowercase();
-
-    // Check for password-related errors
-    if err_msg.contains("password")
-        || err_msg.contains("encrypted")
-        || err_msg.contains("passphrase")
-        || err_msg.contains("decrypt")
-    {
-        if options.password.is_none() {
-            return ExtractError::PasswordRequired;
-        } else {
-            return ExtractError::InvalidPassword;
-        }
-    }
-
-    // Check for corruption indicators
-    if err_msg.contains("corrupt")
-        || err_msg.contains("invalid")
-        || err_msg.contains("malformed")
-        || err_msg.contains("damaged")
-    {
-        return ExtractError::Corrupted(e.to_string());
-    }
-
-    // Check for unsupported format
-    if err_msg.contains("unsupported")
-        || err_msg.contains("unknown format")
-        || err_msg.contains("not recognized")
-    {
-        return ExtractError::UnsupportedFormat(e.to_string());
-    }
-
-    // Default to corrupted for other errors
-    ExtractError::Corrupted(e.to_string())
 }
 
 /// Check if a file is a multi-part archive (any format).

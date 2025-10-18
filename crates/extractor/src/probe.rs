@@ -3,7 +3,7 @@
 use crate::error::ExtractError;
 use crate::types::{ArchiveEntry, ArchiveInfo};
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::Read;
 use std::path::Path;
 
 /// Probe an archive to retrieve metadata without extracting.
@@ -98,13 +98,37 @@ fn list_entries_by_format(
     match format {
         "ZIP" => list_zip_entries(file),
         "TAR" | "TAR.GZ" | "TAR.BZ2" | "TAR.XZ" => list_tar_entries(file, format),
+        "GZIP" | "BZIP2" | "XZ" => list_compressed_file_entry(path),
         "7Z" => list_7z_entries(path),
         "RAR" => list_rar_entries(path),
-        _ => {
-            // For other formats (ISO, GZIP, etc.), use compress-tools fallback
-            list_generic_entries(file, path)
-        }
+        _ => Err(format!("Unsupported format: {}", format).into()),
     }
+}
+
+/// List entry for a single compressed file (gz, bz2, xz).
+fn list_compressed_file_entry(
+    path: &Path,
+) -> std::result::Result<(Vec<ArchiveEntry>, bool), Box<dyn std::error::Error>> {
+    // For single compressed files, we create a single entry representing the decompressed file
+    let output_filename = path
+        .file_stem()
+        .ok_or("Invalid filename")?
+        .to_string_lossy()
+        .to_string();
+    
+    // We can't easily determine the uncompressed size without decompressing,
+    // so we'll use the compressed size as an estimate
+    let file_metadata = std::fs::metadata(path)?;
+    let compressed_size = file_metadata.len();
+    
+    let entry = ArchiveEntry {
+        path: output_filename,
+        is_directory: false,
+        size: compressed_size, // Estimate - actual size may differ
+        compressed_size: Some(compressed_size),
+    };
+    
+    Ok((vec![entry], false))
 }
 
 /// List entries in a ZIP archive.
@@ -136,13 +160,13 @@ fn list_zip_entries(
 
 /// List entries in a TAR archive (with optional compression).
 fn list_tar_entries(
-    file: File,
+    mut file: File,
     format: &str,
 ) -> std::result::Result<(Vec<ArchiveEntry>, bool), Box<dyn std::error::Error>> {
     use bzip2::read::BzDecoder;
     use flate2::read::GzDecoder;
+    use lzma_rs::xz_decompress;
     use std::io::BufReader;
-    use xz2::read::XzDecoder;
 
     let mut entries = Vec::new();
 
@@ -150,7 +174,14 @@ fn list_tar_entries(
     let reader: Box<dyn Read> = match format {
         "TAR.GZ" => Box::new(GzDecoder::new(BufReader::new(file))),
         "TAR.BZ2" => Box::new(BzDecoder::new(BufReader::new(file))),
-        "TAR.XZ" => Box::new(XzDecoder::new(BufReader::new(file))),
+        "TAR.XZ" => {
+            // lzma-rs requires decompressing to a buffer first
+            let mut compressed = Vec::new();
+            file.read_to_end(&mut compressed)?;
+            let mut decompressed = Vec::new();
+            xz_decompress(&mut compressed.as_slice(), &mut decompressed)?;
+            Box::new(std::io::Cursor::new(decompressed))
+        }
         _ => Box::new(BufReader::new(file)),
     };
 
@@ -242,39 +273,8 @@ fn list_rar_entries(
     Ok((entries, encrypted))
 }
 
-/// List entries using compress-tools (fallback for unsupported formats).
-fn list_generic_entries(
-    file: File,
-    _path: &Path,
-) -> std::result::Result<(Vec<ArchiveEntry>, bool), Box<dyn std::error::Error>> {
-    let reader = BufReader::new(file);
-    list_generic_entries_from_reader(reader)
-}
-
-/// List entries from a reader using compress-tools.
-fn list_generic_entries_from_reader(
-    reader: BufReader<File>,
-) -> std::result::Result<(Vec<ArchiveEntry>, bool), Box<dyn std::error::Error>> {
-    let file_list = compress_tools::list_archive_files(reader)?;
-
-    let entries: Vec<ArchiveEntry> = file_list
-        .into_iter()
-        .map(|path| {
-            let is_directory = path.ends_with('/');
-            ArchiveEntry {
-                path,
-                is_directory,
-                size: 0, // compress-tools doesn't provide size info
-                compressed_size: None,
-            }
-        })
-        .collect();
-
-    Ok((entries, false))
-}
-
 /// Detect archive format from file extension and magic bytes.
-fn detect_format(path: &Path) -> std::result::Result<String, ExtractError> {
+pub(crate) fn detect_format(path: &Path) -> std::result::Result<String, ExtractError> {
     let extension = path
         .extension()
         .and_then(|e| e.to_str())
@@ -351,7 +351,6 @@ fn detect_format(path: &Path) -> std::result::Result<String, ExtractError> {
                 "XZ"
             }
         }
-        "iso" => "ISO",
         _ => {
             return Err(ExtractError::UnsupportedFormat(format!(
                 "Unknown extension: {}",

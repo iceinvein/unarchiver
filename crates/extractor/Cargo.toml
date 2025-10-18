@@ -19,16 +19,20 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 
 # Archive handling
-compress-tools = "0.15"
 tempfile = "3"
 ts-rs = "9.0"
-zip = "2"
+zip = { version = "2", default-features = false, features = [
+  "deflate",
+  "bzip2",
+  "aes-crypto",
+] } # Exclude xz feature to avoid liblzma
 tar = "0.4"
 flate2 = "1"
 bzip2 = "0.4"
-xz2 = "0.1"
+lzma-rs = "0.3" # Pure Rust LZMA implementation (App Store compatible)
 sevenz-rust2 = "0.7"
 unrar = "0.5"
+walkdir = "2"
 
 [dev-dependencies]
 tempfile = "3"
@@ -36,5 +40,5 @@ zip = "2"
 tar = "0.4"
 flate2 = "1"
 bzip2 = "0.4"
-xz2 = "0.1"
+lzma-rs = "0.3"
 sevenz-rust2 = "0.7"

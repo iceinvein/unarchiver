@@ -78,21 +78,28 @@ fn create_tar_bz2_archive(archive_path: &PathBuf, files: &[(&str, &[u8])]) -> st
 
 /// Helper function to create a TAR.XZ archive
 fn create_tar_xz_archive(archive_path: &PathBuf, files: &[(&str, &[u8])]) -> std::io::Result<()> {
-    use xz2::write::XzEncoder;
+    use lzma_rs::xz_compress;
     
-    let file = File::create(archive_path)?;
-    let encoder = XzEncoder::new(file, 6);
-    let mut tar = tar::Builder::new(encoder);
-    
-    for (name, content) in files {
-        let mut header = tar::Header::new_gnu();
-        header.set_size(content.len() as u64);
-        header.set_mode(0o644);
-        header.set_cksum();
-        tar.append_data(&mut header, name, &content[..])?;
+    // First create the TAR in memory
+    let mut tar_data = Vec::new();
+    {
+        let mut tar = tar::Builder::new(&mut tar_data);
+        
+        for (name, content) in files {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(content.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            tar.append_data(&mut header, name, &content[..])?;
+        }
+        
+        tar.finish()?;
     }
     
-    tar.finish()?;
+    // Then compress with XZ
+    let mut file = File::create(archive_path)?;
+    xz_compress(&mut tar_data.as_slice(), &mut file)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     Ok(())
 }
 

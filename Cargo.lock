@@ -660,18 +660,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "compress-tools"
-version = "0.15.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecbcea9a172acabd98f272919faf0b1830a2ccec90d518d67c5eb13742e769a7"
-dependencies = [
- "derive_more",
- "libc",
- "pkg-config",
- "vcpkg",
-]
-
-[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1233,8 +1221,8 @@ name = "extractor"
 version = "0.1.0"
 dependencies = [
  "bzip2 0.4.4",
- "compress-tools",
  "flate2",
+ "lzma-rs",
  "serde",
  "serde_json",
  "sevenz-rust2",
@@ -1245,7 +1233,7 @@ dependencies = [
  "tracing",
  "ts-rs",
  "unrar",
- "xz2",
+ "walkdir",
  "zip",
 ]
 
@@ -5197,12 +5185,6 @@ name = "valuable"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
-
-[[package]]
-name = "vcpkg"
-version = "0.2.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "version-compare"
