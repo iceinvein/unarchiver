@@ -3,21 +3,20 @@
 /**
  * Statistics about a completed extraction operation.
  */
-export type ExtractStats = {
-	/**
-	 * Number of files successfully extracted
-	 */
-	files_extracted: number;
-	/**
-	 * Total bytes written to disk
-	 */
-	bytes_written: number;
-	/**
-	 * Duration of the extraction operation (in seconds)
-	 */
-	duration: number;
-	/**
-	 * Whether the extraction was cancelled
-	 */
-	cancelled: boolean;
-};
+export type ExtractStats = { 
+/**
+ * Number of files successfully extracted
+ */
+files_extracted: number, 
+/**
+ * Total bytes written to disk
+ */
+bytes_written: number, 
+/**
+ * Duration of the extraction operation (in seconds)
+ */
+duration: number, 
+/**
+ * Whether the extraction was cancelled
+ */
+cancelled: boolean, };

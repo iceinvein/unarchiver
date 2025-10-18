@@ -177,3 +177,19 @@ export async function getUniqueOutputPath(
 ): Promise<string> {
 	return await invoke<string>("get_unique_output_path", { archivePath });
 }
+
+/**
+ * Get accessible default directories (works in sandbox)
+ * @returns Array of accessible directories
+ */
+export async function getAccessibleDirectories(): Promise<FileSystemEntry[]> {
+	return await invoke<FileSystemEntry[]>("get_accessible_directories");
+}
+
+/**
+ * Request folder access permission using native file picker
+ * @returns Selected folder path or null if cancelled
+ */
+export async function requestFolderAccess(): Promise<string | null> {
+	return await invoke<string | null>("request_folder_access");
+}

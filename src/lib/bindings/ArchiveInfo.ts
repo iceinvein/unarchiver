@@ -4,29 +4,28 @@ import type { ArchiveEntry } from "./ArchiveEntry";
 /**
  * Metadata information about an archive.
  */
-export type ArchiveInfo = {
-	/**
-	 * Archive format (e.g., "ZIP", "TAR", "7Z")
-	 */
-	format: string;
-	/**
-	 * Number of entries in the archive
-	 */
-	entries: number;
-	/**
-	 * Compressed size in bytes (if available)
-	 */
-	compressed_bytes?: number;
-	/**
-	 * Estimated uncompressed size in bytes (if available)
-	 */
-	uncompressed_estimate?: number;
-	/**
-	 * Whether the archive is password-protected
-	 */
-	encrypted: boolean;
-	/**
-	 * List of all entries in the archive
-	 */
-	entry_list: Array<ArchiveEntry>;
-};
+export type ArchiveInfo = { 
+/**
+ * Archive format (e.g., "ZIP", "TAR", "7Z")
+ */
+format: string, 
+/**
+ * Number of entries in the archive
+ */
+entries: number, 
+/**
+ * Compressed size in bytes (if available)
+ */
+compressed_bytes?: number, 
+/**
+ * Estimated uncompressed size in bytes (if available)
+ */
+uncompressed_estimate?: number, 
+/**
+ * Whether the archive is password-protected
+ */
+encrypted: boolean, 
+/**
+ * List of all entries in the archive
+ */
+entry_list: Array<ArchiveEntry>, };

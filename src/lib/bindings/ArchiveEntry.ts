@@ -3,21 +3,20 @@
 /**
  * Individual entry within an archive.
  */
-export type ArchiveEntry = {
-	/**
-	 * Path of the entry within the archive
-	 */
-	path: string;
-	/**
-	 * Whether this entry is a directory
-	 */
-	is_directory: boolean;
-	/**
-	 * Uncompressed size in bytes
-	 */
-	size: number;
-	/**
-	 * Compressed size in bytes (if available)
-	 */
-	compressed_size?: number;
-};
+export type ArchiveEntry = { 
+/**
+ * Path of the entry within the archive
+ */
+path: string, 
+/**
+ * Whether this entry is a directory
+ */
+is_directory: boolean, 
+/**
+ * Uncompressed size in bytes
+ */
+size: number, 
+/**
+ * Compressed size in bytes (if available)
+ */
+compressed_size?: number, };
