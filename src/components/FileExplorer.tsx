@@ -14,7 +14,11 @@ import {
 	PackageOpen,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getHomeDirectory, listDirectory } from "../lib/api";
+import {
+	getHomeDirectory,
+	listDirectory,
+	requestFolderAccess,
+} from "../lib/api";
 import type { FileSystemEntry } from "../lib/bindings/FileSystemEntry";
 import { showError } from "../lib/toast";
 
@@ -62,22 +66,24 @@ export default function FileExplorer({
 		}
 	}, [contextMenu]);
 
-	// Initialize with home directory
+	// Initialize - don't auto-load any directory to avoid permission prompts
 	useEffect(() => {
 		const initializeHome = async () => {
 			try {
+				// Try to get home directory path without accessing it
 				const homePath = await getHomeDirectory();
 				setRootPath(homePath);
-				onPathChange(homePath);
+				// Don't call onPathChange here - wait for user to select a folder
 			} catch (err) {
 				const errorMsg =
 					err instanceof Error ? err.message : "Failed to get home directory";
-				setError(errorMsg);
-				showError(`Unable to access home directory: ${errorMsg}`);
+				console.error("Failed to get home directory:", errorMsg);
+				// Set a default root path
+				setRootPath("/");
 			}
 		};
 		initializeHome();
-	}, [onPathChange]);
+	}, []);
 
 	const navigateUp = useCallback(() => {
 		if (!currentPath || currentPath === rootPath) return;
@@ -119,11 +125,14 @@ export default function FileExplorer({
 
 				// Handle specific error cases
 				if (
+					errorMsg.includes("PERMISSION_DENIED") ||
 					errorMsg.includes("Permission denied") ||
-					errorMsg.includes("permission")
+					errorMsg.includes("permission") ||
+					errorMsg.includes("Access denied")
 				) {
+					setError("PERMISSION_DENIED");
 					showError(
-						"Permission denied: You don't have access to this directory",
+						"Permission denied: You don't have access to this directory. Click 'Request Access' to grant permission.",
 					);
 				} else if (
 					errorMsg.includes("does not exist") ||
@@ -244,91 +253,90 @@ export default function FileExplorer({
 	const toggleFolder = useCallback(
 		async (nodePath: string[]) => {
 			console.log("toggleFolder called with path:", nodePath);
+			
+			// Helper function to deeply clone and update a node
+			const updateNodeAtPath = (
+				nodes: TreeNode[],
+				path: string[],
+				depth: number,
+			): TreeNode[] => {
+				return nodes.map((node, index) => {
+					if (
+						depth === path.length - 1 &&
+						index === parseInt(path[depth], 10)
+					) {
+						// This is the node to toggle
+						const newNode = {
+							...node,
+							isExpanded: !node.isExpanded,
+							isLoading: !node.isExpanded && node.children.length === 0,
+						};
+
+						console.log(
+							"Toggling node:",
+							node.entry.name,
+							"from",
+							node.isExpanded,
+							"to",
+							newNode.isExpanded,
+						);
+
+						// Load children if expanding and not loaded yet
+						if (newNode.isExpanded && node.children.length === 0) {
+							loadChildren(node).then((children) => {
+								// Single update with loaded children
+								setTree((prevTree) => {
+									const updateWithChildren = (
+										nodes: TreeNode[],
+										path: string[],
+										depth: number,
+									): TreeNode[] => {
+										return nodes.map((n, i) => {
+											if (
+												depth === path.length - 1 &&
+												i === parseInt(path[depth], 10)
+											) {
+												return { ...n, children, isLoading: false };
+											}
+											if (
+												depth < path.length - 1 &&
+												i === parseInt(path[depth], 10)
+											) {
+												return {
+													...n,
+													children: updateWithChildren(
+														n.children,
+														path,
+														depth + 1,
+													),
+												};
+											}
+											return n;
+										});
+									};
+									return updateWithChildren(prevTree, path, 0);
+								});
+							});
+						}
+
+						return newNode;
+					}
+					if (
+						depth < path.length - 1 &&
+						index === parseInt(path[depth], 10)
+					) {
+						// This is a parent node in the path, recurse into children
+						return {
+							...node,
+							children: updateNodeAtPath(node.children, path, depth + 1),
+						};
+					}
+					return node;
+				});
+			};
+
 			setTree((prevTree) => {
 				console.log("Previous tree:", prevTree);
-
-				// Helper function to deeply clone and update a node
-				const updateNodeAtPath = (
-					nodes: TreeNode[],
-					path: string[],
-					depth: number,
-				): TreeNode[] => {
-					return nodes.map((node, index) => {
-						if (
-							depth === path.length - 1 &&
-							index === parseInt(path[depth], 10)
-						) {
-							// This is the node to toggle
-							const newNode = {
-								...node,
-								isExpanded: !node.isExpanded,
-								isLoading: !node.isExpanded && node.children.length === 0,
-							};
-
-							console.log(
-								"Toggling node:",
-								node.entry.name,
-								"from",
-								node.isExpanded,
-								"to",
-								newNode.isExpanded,
-							);
-
-							// Load children if expanding and not loaded yet
-							if (newNode.isExpanded && node.children.length === 0) {
-								loadChildren(node).then((children) => {
-									setTree((prevTree) => {
-										return updateNodeAtPath(prevTree, path, 0);
-									});
-									// Update with loaded children
-									setTree((prevTree) => {
-										const updateWithChildren = (
-											nodes: TreeNode[],
-											path: string[],
-											depth: number,
-										): TreeNode[] => {
-											return nodes.map((n, i) => {
-												if (
-													depth === path.length - 1 &&
-													i === parseInt(path[depth], 10)
-												) {
-													return { ...n, children, isLoading: false };
-												} else if (
-													depth < path.length - 1 &&
-													i === parseInt(path[depth], 10)
-												) {
-													return {
-														...n,
-														children: updateWithChildren(
-															n.children,
-															path,
-															depth + 1,
-														),
-													};
-												}
-												return n;
-											});
-										};
-										return updateWithChildren(prevTree, path, 0);
-									});
-								});
-							}
-
-							return newNode;
-						} else if (
-							depth < path.length - 1 &&
-							index === parseInt(path[depth], 10)
-						) {
-							// This is a parent node in the path, recurse into children
-							return {
-								...node,
-								children: updateNodeAtPath(node.children, path, depth + 1),
-							};
-						}
-						return node;
-					});
-				};
-
 				const newTree = updateNodeAtPath(prevTree, nodePath, 0);
 				console.log("New tree:", newTree);
 				return newTree;
@@ -645,30 +653,100 @@ export default function FileExplorer({
 			<CardHeader className="flex flex-col gap-2 pb-2 flex-shrink-0">
 				<div className="flex items-center justify-between w-full">
 					<h3 className="text-lg font-semibold">File Explorer</h3>
-					<Button
-						size="sm"
-						variant="light"
-						isIconOnly
-						onPress={navigateUp}
-						isDisabled={!currentPath || currentPath === rootPath}
-						aria-label="Go to parent directory"
-					>
-						<ChevronLeft className="w-4 h-4" />
-					</Button>
+					<div className="flex gap-1">
+						<Button
+							size="sm"
+							variant="light"
+							isIconOnly
+							onPress={async () => {
+								try {
+									const selectedPath = await requestFolderAccess();
+									if (selectedPath) {
+										onPathChange(selectedPath);
+										setError(null);
+									}
+								} catch (err) {
+									showError("Failed to select folder");
+								}
+							}}
+							aria-label="Select folder"
+						>
+							<FolderOpen className="w-4 h-4" />
+						</Button>
+						<Button
+							size="sm"
+							variant="light"
+							isIconOnly
+							onPress={navigateUp}
+							isDisabled={!currentPath || currentPath === rootPath}
+							aria-label="Go to parent directory"
+						>
+							<ChevronLeft className="w-4 h-4" />
+						</Button>
+					</div>
 				</div>
 				{renderBreadcrumbs()}
 			</CardHeader>
 
 			<CardBody className="flex-1 overflow-y-auto p-0">
-				{isLoading ? (
+				{!currentPath ? (
+					<div className="flex flex-col items-center justify-center h-full text-default-400 p-8">
+						<FolderOpen className="w-16 h-16 mb-4 opacity-50" />
+						<p className="text-sm text-center mb-4">
+							Select a folder to browse archives
+						</p>
+						<Button
+							color="primary"
+							variant="flat"
+							startContent={<FolderOpen className="w-4 h-4" />}
+							onPress={async () => {
+								try {
+									const selectedPath = await requestFolderAccess();
+									if (selectedPath) {
+										onPathChange(selectedPath);
+										setError(null);
+									}
+								} catch (err) {
+									showError("Failed to select folder");
+								}
+							}}
+						>
+							Select Folder
+						</Button>
+					</div>
+				) : isLoading ? (
 					<div className="flex items-center justify-center h-32">
 						<Spinner size="lg" />
 					</div>
 				) : error ? (
 					<div className="flex flex-col items-center justify-center h-32 text-danger p-4">
 						<AlertCircle className="w-12 h-12 mb-3 opacity-50" />
-						<p className="text-sm text-center mb-3">{error}</p>
+						<p className="text-sm text-center mb-3">
+							{error === "PERMISSION_DENIED"
+								? "Access denied to this directory"
+								: error}
+						</p>
 						<div className="flex gap-2">
+							{error === "PERMISSION_DENIED" && (
+								<Button
+									size="sm"
+									variant="flat"
+									color="primary"
+									onPress={async () => {
+										try {
+											const selectedPath = await requestFolderAccess();
+											if (selectedPath) {
+												onPathChange(selectedPath);
+												setError(null);
+											}
+										} catch (err) {
+											showError("Failed to request folder access");
+										}
+									}}
+								>
+									Select Different Folder
+								</Button>
+							)}
 							<Button
 								size="sm"
 								variant="flat"
