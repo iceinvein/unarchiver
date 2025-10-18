@@ -68,15 +68,17 @@ function App() {
 	useEffect(() => {
 		const checkAccess = async () => {
 			try {
-				const { getAccessibleDirectories } = await import("./lib/api");
-				const accessible = await getAccessibleDirectories();
+				const { loadSettings } = await import("./lib/api");
+				const settings = await loadSettings();
 
-				// If no accessible directories, show permission dialog
-				if (accessible.length === 0) {
+				// Show permission dialog on first run (if user hasn't seen it before)
+				if (!settings.hasSeenPermissionDialog) {
 					setShowPermissionDialog(true);
 				}
 			} catch (err) {
-				console.error("Failed to check accessible directories:", err);
+				console.error("Failed to check settings:", err);
+				// On error, show the dialog to be safe
+				setShowPermissionDialog(true);
 			}
 		};
 
@@ -345,9 +347,14 @@ function App() {
 			<PermissionDialog
 				isOpen={showPermissionDialog}
 				onClose={() => setShowPermissionDialog(false)}
-				onAccessGranted={async (path) => {
-					const { currentDirectoryAtom } = await import("./lib/store");
-					currentDirectoryAtom.set(path);
+				onDismiss={async () => {
+					// User clicked "Don't show again"
+					const { loadSettings, saveSettings } = await import("./lib/api");
+					const settings = await loadSettings();
+					await saveSettings({
+						...settings,
+						hasSeenPermissionDialog: true,
+					});
 				}}
 			/>
 
