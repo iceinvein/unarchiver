@@ -19,6 +19,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import MainLayout from "./components/MainLayout";
 import PasswordPrompt from "./components/PasswordPrompt";
+import PermissionDialog from "./components/PermissionDialog";
 import QueueList from "./components/QueueList";
 import Settings from "./components/Settings";
 import ToastContainer from "./components/ToastContainer";
@@ -55,12 +56,32 @@ function App() {
 		archivePath: "",
 	});
 	const [isQueueDrawerOpen, setIsQueueDrawerOpen] = useState(false);
+	const [showPermissionDialog, setShowPermissionDialog] = useState(false);
 	const completedJobsRef = useRef<Set<string>>(new Set());
 
 	// Count active queue items (pending or extracting)
 	const activeQueueCount = Object.values(queue).filter(
 		(item) => item.status === "pending" || item.status === "extracting",
 	).length;
+
+	// Check for folder access on startup
+	useEffect(() => {
+		const checkAccess = async () => {
+			try {
+				const { getAccessibleDirectories } = await import("./lib/api");
+				const accessible = await getAccessibleDirectories();
+
+				// If no accessible directories, show permission dialog
+				if (accessible.length === 0) {
+					setShowPermissionDialog(true);
+				}
+			} catch (err) {
+				console.error("Failed to check accessible directories:", err);
+			}
+		};
+
+		checkAccess();
+	}, []);
 
 	// Set up event listeners
 	useEffect(() => {
@@ -318,6 +339,16 @@ function App() {
 				onClose={() => setPasswordPrompt({ ...passwordPrompt, isOpen: false })}
 				jobId={passwordPrompt.jobId}
 				archivePath={passwordPrompt.archivePath}
+			/>
+
+			{/* Permission Dialog */}
+			<PermissionDialog
+				isOpen={showPermissionDialog}
+				onClose={() => setShowPermissionDialog(false)}
+				onAccessGranted={async (path) => {
+					const { currentDirectoryAtom } = await import("./lib/store");
+					currentDirectoryAtom.set(path);
+				}}
 			/>
 
 			{/* Settings Modal */}
