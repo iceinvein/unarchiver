@@ -66,8 +66,7 @@
           "xz",
           "tgz",
           "tbz2",
-          "txz",
-          "iso"
+          "txz"
         ],
         "name": "Archive",
         "role": "Viewer",
