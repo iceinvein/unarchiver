@@ -17,5 +17,16 @@
     <!-- File access for writing extracted files -->
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
+    
+    <!-- Network access for Tauri's custom protocol -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    
+    <!-- Allow loading local resources -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
 </dict>
 </plist>

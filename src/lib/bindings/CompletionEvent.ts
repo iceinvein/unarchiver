@@ -5,10 +5,4 @@ import type { JobStatus } from "./JobStatus";
 /**
  * Completion event payload
  */
-export type CompletionEvent = {
-	jobId: string;
-	archivePath: string;
-	status: JobStatus;
-	stats?: ExtractStats;
-	error?: string;
-};
+export type CompletionEvent = { jobId: string, archivePath: string, status: JobStatus, stats?: ExtractStats, error?: string, };

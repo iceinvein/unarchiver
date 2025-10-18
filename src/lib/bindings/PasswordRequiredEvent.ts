@@ -3,4 +3,4 @@
 /**
  * Password required event payload
  */
-export type PasswordRequiredEvent = { jobId: string; archivePath: string };
+export type PasswordRequiredEvent = { jobId: string, archivePath: string, };

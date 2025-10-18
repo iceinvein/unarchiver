@@ -3,10 +3,4 @@
 /**
  * Progress event payload
  */
-export type ProgressEvent = {
-	jobId: string;
-	archivePath: string;
-	currentFile: string;
-	bytesWritten: number;
-	totalBytes?: number;
-};
+export type ProgressEvent = { jobId: string, archivePath: string, currentFile: string, bytesWritten: number, totalBytes?: number, };
