@@ -132,7 +132,7 @@ export default function FileExplorer({
 				) {
 					setError("PERMISSION_DENIED");
 					showError(
-						"Permission denied: You don't have access to this directory. Click 'Request Access' to grant permission.",
+						"This directory requires permission. Use the folder picker to grant access.",
 					);
 				} else if (
 					errorMsg.includes("does not exist") ||
@@ -380,12 +380,20 @@ export default function FileExplorer({
 		[onPathChange, onArchiveSelect],
 	);
 
-	const navigateHome = useCallback(() => {
-		if (rootPath) {
-			onPathChange(rootPath);
-			onArchiveSelect(null);
+	const navigateHome = useCallback(async () => {
+		// Instead of navigating to a potentially inaccessible home directory,
+		// open the folder picker to let user choose an accessible location
+		try {
+			const selectedPath = await requestFolderAccess();
+			if (selectedPath) {
+				onPathChange(selectedPath);
+				onArchiveSelect(null);
+				setError(null);
+			}
+		} catch (err) {
+			showError("Failed to select folder");
 		}
-	}, [rootPath, onPathChange, onArchiveSelect]);
+	}, [onPathChange, onArchiveSelect]);
 
 	// Flatten tree for keyboard navigation
 	const flattenTree = useCallback(
@@ -504,7 +512,8 @@ export default function FileExplorer({
 					variant="light"
 					isIconOnly
 					onPress={navigateHome}
-					aria-label="Go to home directory"
+					aria-label="Select folder"
+					title="Select a folder to browse"
 				>
 					<Home className="w-4 h-4" />
 				</Button>
@@ -514,7 +523,9 @@ export default function FileExplorer({
 						<Button
 							size="sm"
 							variant="light"
-							onPress={() => onPathChange(segment.path)}
+							onPress={() => {
+								onPathChange(segment.path);
+							}}
 							className="min-w-0"
 						>
 							{segment.name}
@@ -721,44 +732,63 @@ export default function FileExplorer({
 				) : error ? (
 					<div className="flex flex-col items-center justify-center h-32 text-danger p-4">
 						<AlertCircle className="w-12 h-12 mb-3 opacity-50" />
-						<p className="text-sm text-center mb-3">
-							{error === "PERMISSION_DENIED"
-								? "Access denied to this directory"
-								: error}
-						</p>
+						{error === "PERMISSION_DENIED" ? (
+							<>
+								<p className="text-sm text-center mb-1 font-medium">
+									Permission Required
+								</p>
+								<p className="text-xs text-center text-default-500 mb-3 max-w-md">
+									Due to macOS sandboxing, you need to grant access to this directory.
+									Use the folder picker to select this location or a parent folder.
+								</p>
+							</>
+						) : (
+							<p className="text-sm text-center mb-3">{error}</p>
+						)}
 						<div className="flex gap-2">
 							{error === "PERMISSION_DENIED" && (
-								<Button
-									size="sm"
-									variant="flat"
-									color="primary"
-									onPress={async () => {
-										try {
-											const selectedPath = await requestFolderAccess();
-											if (selectedPath) {
-												onPathChange(selectedPath);
-												setError(null);
+								<>
+									<Button
+										size="sm"
+										variant="flat"
+										color="primary"
+										onPress={async () => {
+											try {
+												const selectedPath = await requestFolderAccess();
+												if (selectedPath) {
+													onPathChange(selectedPath);
+													setError(null);
+												}
+											} catch {
+												showError("Failed to request folder access");
 											}
-										} catch (err) {
-											showError("Failed to request folder access");
-										}
-									}}
-								>
-									Select Different Folder
-								</Button>
+										}}
+									>
+										Grant Access
+									</Button>
+									{currentPath !== rootPath && (
+										<Button size="sm" variant="light" onPress={navigateUp}>
+											Go to Parent
+										</Button>
+									)}
+								</>
 							)}
-							<Button
-								size="sm"
-								variant="flat"
-								color="danger"
-								onPress={() => onPathChange(currentPath)}
-							>
-								Retry
-							</Button>
-							{currentPath !== rootPath && (
-								<Button size="sm" variant="light" onPress={navigateUp}>
-									Go to Parent
-								</Button>
+							{error !== "PERMISSION_DENIED" && (
+								<>
+									<Button
+										size="sm"
+										variant="flat"
+										color="danger"
+										onPress={() => onPathChange(currentPath)}
+									>
+										Retry
+									</Button>
+									{currentPath !== rootPath && (
+										<Button size="sm" variant="light" onPress={navigateUp}>
+											Go to Parent
+										</Button>
+									)}
+								</>
 							)}
 						</div>
 					</div>
