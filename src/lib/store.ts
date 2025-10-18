@@ -9,6 +9,7 @@ const defaultSettings: Settings = {
 	stripComponents: 0,
 	allowSymlinks: false,
 	allowHardlinks: false,
+	hasSeenPermissionDialog: false,
 };
 
 // Theme atom - stores the current theme preference

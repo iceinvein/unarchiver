@@ -79,6 +79,7 @@ pub fn run() {
             commands::get_unique_output_path,
             commands::save_settings,
             commands::load_settings,
+            commands::open_system_settings,
         ])
         .setup(|app| {
             // Flush any pending file opens that were buffered before window was ready

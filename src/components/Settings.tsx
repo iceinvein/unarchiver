@@ -45,6 +45,7 @@ export default function Settings() {
 						stripComponents: loaded.stripComponents,
 						allowSymlinks: loaded.allowSymlinks,
 						allowHardlinks: loaded.allowHardlinks,
+						hasSeenPermissionDialog: loaded.hasSeenPermissionDialog,
 					});
 				}
 			} catch (error) {
@@ -63,6 +64,7 @@ export default function Settings() {
 				stripComponents: settings.stripComponents,
 				allowSymlinks: settings.allowSymlinks,
 				allowHardlinks: settings.allowHardlinks,
+				hasSeenPermissionDialog: settings.hasSeenPermissionDialog,
 			};
 			await invoke("save_settings", { settings: settingsData });
 		} catch (error) {

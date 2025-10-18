@@ -3,10 +3,4 @@
 /**
  * Settings structure for persistence
  */
-export type SettingsData = {
-	overwriteMode: string;
-	sizeLimitGb: number;
-	stripComponents: number;
-	allowSymlinks: boolean;
-	allowHardlinks: boolean;
-};
+export type SettingsData = { overwriteMode: string, sizeLimitGb: number, stripComponents: number, allowSymlinks: boolean, allowHardlinks: boolean, hasSeenPermissionDialog: boolean, };

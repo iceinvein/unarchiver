@@ -193,3 +193,19 @@ export async function getAccessibleDirectories(): Promise<FileSystemEntry[]> {
 export async function requestFolderAccess(): Promise<string | null> {
 	return await invoke<string | null>("request_folder_access");
 }
+
+/**
+ * Load settings from disk
+ * @returns Settings data
+ */
+export async function loadSettings(): Promise<Settings> {
+	return await invoke<Settings>("load_settings");
+}
+
+/**
+ * Save settings to disk
+ * @param settings - Settings data to save
+ */
+export async function saveSettings(settings: Settings): Promise<void> {
+	await invoke("save_settings", { settings });
+}

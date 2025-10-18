@@ -34,6 +34,7 @@ export interface Settings {
 	stripComponents: number;
 	allowSymlinks: boolean;
 	allowHardlinks: boolean;
+	hasSeenPermissionDialog: boolean;
 }
 
 export interface AppStore {

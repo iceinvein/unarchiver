@@ -395,7 +395,10 @@ pub async fn list_directory(path: String) -> Result<Vec<FileSystemEntry>, String
 
         // Check if path exists and is a directory
         if !dir_path.exists() {
-            return Err(format!("PERMISSION_DENIED: Path does not exist or access denied: {}", path));
+            return Err(format!(
+                "PERMISSION_DENIED: Path does not exist or access denied: {}",
+                path
+            ));
         }
 
         if !dir_path.is_dir() {
@@ -425,7 +428,11 @@ pub async fn list_directory(path: String) -> Result<Vec<FileSystemEntry>, String
             let metadata = match entry.metadata() {
                 Ok(m) => m,
                 Err(e) => {
-                    eprintln!("Skipping {} due to metadata error: {}", entry_path.display(), e);
+                    eprintln!(
+                        "Skipping {} due to metadata error: {}",
+                        entry_path.display(),
+                        e
+                    );
                     continue;
                 }
             };
@@ -503,7 +510,7 @@ pub async fn get_accessible_directories() -> Result<Vec<FileSystemEntry>, String
     for (name, dir_option) in dirs_to_check {
         if let Some(dir_path) = dir_option {
             let path_str = dir_path.to_string_lossy().to_string();
-            
+
             accessible.push(FileSystemEntry {
                 name: name.to_string(),
                 path: path_str,
@@ -533,6 +540,28 @@ pub async fn request_folder_access(app: AppHandle) -> Result<Option<String>, Str
         Ok(Some(path_str))
     } else {
         Ok(None)
+    }
+}
+
+/// Open macOS System Settings to Full Disk Access
+#[tauri::command]
+pub async fn open_system_settings() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        
+        // Open System Settings to Privacy & Security > Full Disk Access
+        Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
+            .spawn()
+            .map_err(|e| format!("Failed to open System Settings: {}", e))?;
+        
+        Ok(())
+    }
+    
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("This feature is only available on macOS".to_string())
     }
 }
 
@@ -586,6 +615,7 @@ pub struct SettingsData {
     pub strip_components: u32,
     pub allow_symlinks: bool,
     pub allow_hardlinks: bool,
+    pub has_seen_permission_dialog: bool,
 }
 
 impl Default for SettingsData {
@@ -596,6 +626,7 @@ impl Default for SettingsData {
             strip_components: 0,
             allow_symlinks: false,
             allow_hardlinks: false,
+            has_seen_permission_dialog: false,
         }
     }
 }
@@ -652,12 +683,38 @@ pub async fn load_settings(app: AppHandle) -> Result<SettingsData, String> {
         .await
         .map_err(|e| format!("Failed to read settings file: {}", e))?;
 
-    // Parse JSON
-    let settings: SettingsData = serde_json::from_str(&contents).unwrap_or_else(|e| {
-        // If parsing fails (corrupted file), log error and return defaults
-        eprintln!("Failed to parse settings file: {}. Using defaults.", e);
-        SettingsData::default()
-    });
+    // Parse JSON with lenient handling for missing fields
+    let settings: SettingsData = match serde_json::from_str(&contents) {
+        Ok(s) => s,
+        Err(e) => {
+            // Try to parse as a partial settings object and merge with defaults
+            eprintln!(
+                "Failed to parse settings file: {}. Attempting partial parse...",
+                e
+            );
+
+            // Parse as a generic JSON value first
+            if let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&contents) {
+                // Ensure has_seen_permission_dialog exists with default value
+                if let Some(obj) = value.as_object_mut() {
+                    if !obj.contains_key("hasSeenPermissionDialog") {
+                        obj.insert(
+                            "hasSeenPermissionDialog".to_string(),
+                            serde_json::Value::Bool(false),
+                        );
+                    }
+                }
+
+                // Try to deserialize again with the added field
+                serde_json::from_value(value).unwrap_or_else(|_| {
+                    eprintln!("Still failed to parse. Using defaults.");
+                    SettingsData::default()
+                })
+            } else {
+                SettingsData::default()
+            }
+        }
+    };
 
     Ok(settings)
 }
