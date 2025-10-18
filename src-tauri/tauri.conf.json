@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Unarchiver",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "identifier": "com.dikrana.unarchiver",
   "build": {
     "beforeDevCommand": "bun run dev",
