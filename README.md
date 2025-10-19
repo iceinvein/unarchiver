@@ -4,89 +4,88 @@ A modern, safe, and efficient archive extraction application for macOS built wit
 
 ## Features
 
-- **Multiple Format Support**: Extract ZIP, 7Z, RAR, TAR, GZ, BZ2, XZ, ISO, and more
+- **Multiple Format Support**: Extract ZIP, 7Z, RAR, TAR, GZ, BZ2, and XZ archives
 - **Multi-Part Archive Support**: Full support for RAR multi-part archives (.part1.rar, .r00, etc.)
-- **Modern File Explorer**: Browse and preview archives before extraction
+- **Modern File Explorer**: Browse your file system and preview archives before extraction
 - **Flexible Extraction Options**:
   - Extract to default location (same directory as archive)
-  - Extract to custom folder via dropdown or context menu
+  - Extract to custom folder via split button dropdown
   - Automatic conflict resolution with rename/skip/replace modes
 - **Archive Preview**: View archive contents, file structure, and metadata before extracting
-- **Queue Management**: Process multiple archives with real-time progress tracking
+- **Queue Management**: Process multiple archives with real-time progress tracking in a drawer
 - **Password Support**: Handle password-protected archives with secure prompts
 - **macOS Integration**: 
-  - Double-click archives to open with Unarchiver
-  - Finder Quick Action for "Extract Here" functionality
+  - File associations - double-click archives to open with Unarchiver
+  - Deep-link support for opening archives from Finder
+  - Single-instance app - opening multiple archives adds them to the queue
 - **Safety First**: Built-in protection against zip-slip and path traversal attacks
 - **Customizable Settings**: Control overwrite behavior, size limits, and extraction options
 - **Modern UI**: Clean, responsive interface with light/dark/system theme support
+- **Permission Management**: Guided folder access setup for macOS sandbox compliance
 
 ## Installation
 
-### macOS
+### Mac App Store
+
+Download Unarchiver from the Mac App Store (coming soon).
+
+### Direct Download
 
 1. Download the latest `.dmg` from the [Releases](https://github.com/yourusername/unarchiver/releases) page
 2. Open the DMG and drag Unarchiver to your Applications folder
 3. Launch Unarchiver from Applications
 
-### Finder Quick Action (Optional)
+### First Launch
 
-To enable the "Extract Here" Quick Action in Finder:
-
-1. Open Terminal
-2. Navigate to the Quick Action directory:
-   ```bash
-   cd /Applications/unarchiver.app/Contents/Resources/quick-action
-   ```
-3. Run the installer script:
-   ```bash
-   ./install-quick-action.sh
-   ```
-4. Restart Finder (optional but recommended):
-   ```bash
-   killall Finder
-   ```
-
-**Usage**: Right-click any archive file(s) in Finder → Services → Extract Here
-
-To uninstall the Quick Action:
-```bash
-cd /Applications/unarchiver.app/Contents/Resources/quick-action
-./uninstall-quick-action.sh
-```
+On first launch, you'll be prompted to grant folder access permissions. This is required for the app to read archives and write extracted files due to macOS sandboxing requirements.
 
 ## Usage
 
 ### GUI Application
 
 1. **Launch the app** from Applications
-2. **Browse and select archives** using the file explorer
-3. **Extract archives** by:
+2. **Browse and select archives** using the built-in file explorer
+3. **Preview archive contents** - click on an archive to see its contents, structure, and metadata
+4. **Extract archives** by:
    - Clicking the "Extract" button to extract to the default location (same directory as archive)
-   - Using the dropdown arrow next to "Extract" to choose a custom output folder
-   - Right-clicking archives in the file explorer for quick extraction
-4. **Monitor progress** in the queue list
-5. **Enter passwords** when prompted for encrypted archives
+   - Using the split button dropdown to choose "Extract to..." for a custom output folder
+   - Double-clicking archives from Finder (if file associations are set up)
+5. **Monitor progress** - click the queue icon (top-right) to view active and completed extractions
+6. **Enter passwords** when prompted for encrypted archives
+
+### Opening Archives from Finder
+
+Once file associations are configured, you can:
+- Double-click any supported archive in Finder to open it in Unarchiver
+- Drag and drop archives onto the Unarchiver app icon
+- Right-click archives and select "Open With → Unarchiver"
+
+The app will automatically navigate to the archive location and show a preview.
 
 ### Command Line Interface
 
-The CLI tool is bundled with the application:
+A standalone CLI tool is available in the `crates/cli` directory:
 
 ```bash
+# Build the CLI
+npm run build:cli
+
+# The binary will be at: target/release/unarchive-cli
+
 # Extract archives
-/Applications/unarchiver.app/Contents/MacOS/cli extract --out ~/Downloads archive.zip
+./target/release/unarchive-cli extract --out ~/Downloads archive.zip
 
 # Extract multiple archives
-/Applications/unarchiver.app/Contents/MacOS/cli extract --out ~/Downloads file1.zip file2.7z
+./target/release/unarchive-cli extract --out ~/Downloads file1.zip file2.7z
 
 # Probe archive metadata
-/Applications/unarchiver.app/Contents/MacOS/cli probe archive.zip
+./target/release/unarchive-cli probe archive.zip
 
 # Probe with JSON output
-/Applications/unarchiver.app/Contents/MacOS/cli probe --json archive.zip
+./target/release/unarchive-cli probe --json archive.zip
 
 # Extract with options
-/Applications/unarchiver.app/Contents/MacOS/cli extract \
+./target/release/unarchive-cli extract \
   --out ~/Downloads \
   --overwrite rename \
   --strip-components 1 \
@@ -106,9 +105,9 @@ The CLI tool is bundled with the application:
 
 ### File Explorer
 - Browse your file system to find archives
-- Navigate using breadcrumb navigation or up/back buttons
+- Navigate using breadcrumb navigation
 - Archives are highlighted with special icons
-- Right-click context menu for quick actions
+- Click on archives to preview their contents
 
 ### Archive Preview
 - View archive contents in a tree structure
@@ -118,20 +117,21 @@ The CLI tool is bundled with the application:
 - Quick metadata display (format, file count, size)
 
 ### Extraction Options
-- **Quick Extract**: Click the main "Extract" button to extract to default location
-- **Custom Location**: Use the dropdown arrow to choose a specific output folder
-- **Context Menu**: Right-click any archive for extraction options
-- **Keyboard Shortcut**: Cmd+E (Mac) / Ctrl+E (Windows) to extract selected archive
+- **Quick Extract**: Click the main "Extract" button to extract to default location (same directory as archive)
+- **Custom Location**: Use the split button dropdown to select "Extract to..." and choose a specific output folder
+- **Drag & Drop**: Drop archives onto the app window to open them
 
-### Queue Management
+### Queue Management (Drawer)
+- Click the queue icon (top-right) to open the extraction queue drawer
 - View all active and completed extractions
 - Real-time progress tracking with file names and bytes written
 - Cancel ongoing extractions
+- Badge indicator shows number of active extractions
 - Review extraction statistics (files extracted, duration, etc.)
 
 ## Settings
 
-Configure extraction behavior in the Settings panel:
+Configure extraction behavior in the Settings panel (gear icon in top-right):
 
 - **Overwrite Mode**: Choose how to handle existing files (replace, skip, or rename)
   - **Replace**: Overwrite existing files
@@ -141,26 +141,30 @@ Configure extraction behavior in the Settings panel:
 - **Strip Components**: Remove leading path components from extracted files
 - **Allow Symlinks**: Enable/disable symbolic link extraction (disabled by default for security)
 - **Allow Hardlinks**: Enable/disable hard link extraction (disabled by default for security)
-- **Theme**: Choose between light, dark, or system theme
+- **Theme**: Choose between light, dark, or system theme (toggle with theme icon in navbar)
 
-**Note**: When using "Extract to custom folder", the overwrite mode is automatically set to "replace" for convenience.
+**Note**: When using "Extract to..." for a custom folder, the overwrite mode is automatically set to "replace" for convenience.
 
 ## Supported Formats
 
-| Format | Extensions | Password Support | Multi-Part Support |
-|--------|-----------|------------------|-------------------|
-| ZIP | .zip | ✓ | ⚠️ Limited |
-| 7-Zip | .7z | ✓ | ⚠️ Limited |
-| RAR | .rar, .part1.rar, .r00 | ✓ | ✅ Full |
-| TAR | .tar | ✗ | N/A |
-| GZIP | .gz, .tgz | ✗ | N/A |
-| BZIP2 | .bz2, .tbz2 | ✗ | N/A |
-| XZ | .xz, .txz | ✗ | N/A |
-| ISO | .iso | ✗ | N/A |
+| Format | Extensions | Password Support | Multi-Part Support | Notes |
+|--------|-----------|------------------|-------------------|-------|
+| ZIP | .zip | ✓ | ⚠️ Limited | Includes ZIP64 support |
+| 7-Zip | .7z | ✓ | ⚠️ Limited | |
+| RAR | .rar, .part1.rar, .r00 | ✓ | ✅ Full | Read-only |
+| TAR | .tar | ✗ | N/A | |
+| TAR+GZIP | .tar.gz, .tgz | ✗ | N/A | |
+| TAR+BZIP2 | .tar.bz2, .tbz2, .tbz | ✗ | N/A | |
+| TAR+XZ | .tar.xz, .txz | ✗ | N/A | Pure Rust LZMA |
+| GZIP | .gz | ✗ | N/A | Single file compression |
+| BZIP2 | .bz2 | ✗ | N/A | Single file compression |
+| XZ | .xz | ✗ | N/A | Single file compression |
 
 **Multi-Part Archive Notes:**
 - **RAR**: Full support for `.part1.rar`, `.part01.rar`, `.r00`, `.r01`, etc. Select any part and extraction will automatically start from the first part.
 - **7-Zip/ZIP**: Limited support. Multi-part `.7z.001`/`.zip.001` archives are detected but may require external tools to combine parts before extraction.
+
+**Note**: ISO format is not currently supported.
 
 ## Security
 
@@ -177,7 +181,7 @@ Unarchiver includes built-in security features:
 
 - [Rust](https://www.rust-lang.org/) (latest stable)
 - [Node.js](https://nodejs.org/) (v18 or later)
-- [Bun](https://bun.sh/) (or npm/yarn)
+- [Bun](https://bun.sh/) (recommended) or npm
 - Xcode Command Line Tools (macOS)
 
 ### Setup
@@ -201,22 +205,20 @@ bun run tauri build
 
 ```
 .
+├── Cargo.toml         # Rust workspace configuration
+├── package.json       # Frontend dependencies
 ├── crates/
-│   ├── extractor/     # Core extraction library
-│   └── cli/           # Command-line interface
-├── src/               # React frontend
-├── src-tauri/         # Tauri backend
-└── quick-action/      # Finder Quick Action workflow
+│   ├── extractor/     # Core extraction library (shared)
+│   └── cli/           # Standalone command-line tool
+├── src/               # React frontend (Vite + TypeScript)
+├── src-tauri/         # Tauri backend (main app)
+├── docs/              # Documentation
+└── fastlane/          # Mac App Store automation
 ```
 
+See [WORKSPACE_STRUCTURE.md](docs/WORKSPACE_STRUCTURE.md) for detailed information.
+
 ## Troubleshooting
-
-### Quick Action doesn't appear in Finder
-
-1. Ensure the Quick Action is installed: `ls ~/Library/Services/`
-2. Restart Finder: `killall Finder`
-3. Log out and back in
-4. Check System Preferences → Extensions → Finder to enable the service
 
 ### App won't open (Gatekeeper warning)
 
@@ -229,7 +231,11 @@ For signed releases, this shouldn't be necessary.
 
 ### Extraction fails with "Permission Denied"
 
-Ensure you have write permissions to the output directory. Try selecting a different output location.
+This is usually due to macOS sandbox restrictions:
+1. On first launch, grant folder access when prompted
+2. If you dismissed the dialog, go to Settings and click "Request Folder Access"
+3. Select your home folder or a specific folder you want to extract to
+4. Ensure you have write permissions to the output directory
 
 ### Multi-part archives not working
 
@@ -244,7 +250,29 @@ Ensure you have write permissions to the output directory. Try selecting a diffe
 1. Verify the archive is complete and not corrupted using another tool
 2. For multi-part archives, ensure all parts are in the same directory
 3. Check that you have the first part (`.part1.rar`, `.001`, etc.)
-4. Try extracting with verbose logging enabled (check console output)
+4. Check the app logs for detailed error messages
+
+### File associations not working
+
+If double-clicking archives doesn't open Unarchiver:
+1. Right-click an archive file in Finder
+2. Select "Get Info"
+3. Under "Open with:", select Unarchiver
+4. Click "Change All..." to apply to all files of this type
+
+## Mac App Store
+
+This app is designed for distribution via the Mac App Store. See [MAS_SUBMISSION_GUIDE.md](MAS_SUBMISSION_GUIDE.md) for build and submission instructions.
+
+Key features for App Store compliance:
+- App Sandbox enabled
+- Proper entitlements configuration
+- Signed with Apple Distribution certificate
+- Minimum macOS 12.0 (Apple Silicon only)
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
